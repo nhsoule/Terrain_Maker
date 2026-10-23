@@ -61,6 +61,40 @@
   #hover { bottom: 6px; color: #b9bccb; }
   #glNote { bottom: 6px; }
 
+  /* ----- First Person + Fog Overlays (3D pane) -----|| */
+  #glBtns { position: absolute; right: 8px; bottom: 8px; display: flex; gap: 6px; z-index: 2; }
+  #glBtns button, #fpJump { min-height: 34px; padding: 0 12px; border: 1px solid #fff2; border-radius: 9px; background: #1f2029d0; color: #e8e8ee;
+                 font: 600 13px system-ui, sans-serif; touch-action: manipulation; }
+  #glBtns button.on { background: #e0b43a; color: #16171d; }
+  #fpHud, #fpExit, #fpMini, #fpCross, #fpHint, #joyBase, #fpJump { display: none; }
+  #app.fp #fpHud, #app.fp #fpExit, #app.fp #fpMini, #app.fp #fpCross, #app.fp #fpHint { display: block; }
+  #app.fp.fptouch #fpJump { display: block; }
+  #app.fp.fptouch #fpHint { display: none; }
+  #app.fp #tabs, #app.fp #glNote, #app.fp #info { display: none; }
+  #app.fp:not(.wide) #brushbar, #app.fp:not(.wide) #toolbar { display: none; }
+  #fpHud {
+    position: absolute; left: 8px; top: calc(env(safe-area-inset-top) + 8px); z-index: 2; pointer-events: none;
+    font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace; color: #eef3e6; background: #0009;
+    padding: 6px 9px; border-radius: 8px; white-space: pre; max-width: calc(100% - 190px); overflow: hidden;
+  }
+  /* Phones: Exit top right, minimap top left, the readout below them. */
+  #app:not(.wide) #fpHud { font-size: 10.5px; top: calc(env(safe-area-inset-top) + 118px); max-width: calc(100% - 16px); }
+  #fpExit { position: absolute; right: 8px; top: calc(env(safe-area-inset-top) + 8px); z-index: 3; min-height: 40px; padding: 0 14px;
+            border: 0; border-radius: 10px; background: #e0b43a; color: #16171d; font: 600 14px system-ui, sans-serif; touch-action: manipulation; }
+  canvas#fpMini { inset: auto; right: 8px; top: calc(env(safe-area-inset-top) + 56px); width: 160px; height: 160px; z-index: 2;
+            border-radius: 8px; border: 1px solid #fff5; background: #0d0e12; pointer-events: none; touch-action: auto; }
+  #app:not(.wide) canvas#fpMini { width: 102px; height: 102px; right: auto; left: 8px; top: calc(env(safe-area-inset-top) + 8px); }
+  #fpCross { position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; pointer-events: none; z-index: 2;
+             background: linear-gradient(#fffc, #fffc) center / 2px 14px no-repeat, linear-gradient(#fffc, #fffc) center / 14px 2px no-repeat;
+             filter: drop-shadow(0 0 1px #000); }
+  #fpHint { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); z-index: 2; pointer-events: none;
+            background: #000a; color: #e8e8ee; padding: 6px 12px; border-radius: 16px; font-size: 13px; white-space: nowrap; }
+  #joyBase { position: absolute; width: 110px; height: 110px; margin: -55px 0 0 -55px; border-radius: 50%; z-index: 2; pointer-events: none;
+             background: #fff2; border: 2px solid #fff5; }
+  #joyKnob { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; background: #fffa; }
+  #fpJump { position: absolute; right: 12px; bottom: 56px; min-height: 56px; min-width: 76px; z-index: 2; }
+  #setFovH { font: 12px ui-monospace, Menlo, Consolas, monospace; color: #cfe3c0; font-weight: 400; white-space: nowrap; }
+
   /* ----- Brush Bar -----|| */
   #brushbar { padding: 6px 10px 4px; background: #1f2029; border-top: 1px solid #2c2e3a; display: flex; flex-direction: column; gap: 6px; }
   .sliders { display: flex; gap: 12px; align-items: center; }
@@ -152,6 +186,14 @@
       <canvas id="gl"></canvas>
       <div id="info"></div>
       <div id="glNote"></div>
+      <div id="fpHud"></div>
+      <button id="fpExit" title="Back to the orbit view (Esc)">✕ Exit first person</button>
+      <canvas id="fpMini"></canvas>
+      <div id="fpCross"></div>
+      <div id="fpHint"></div>
+      <div id="joyBase"><div id="joyKnob"></div></div>
+      <button id="fpJump">Jump</button>
+      <div id="glBtns"><button id="bFog" title="Light fog toward the map edge (Map settings: width)">Edge fog</button></div>
     </div>
     <div id="tabs">
       <button data-tab="map" class="on">Map</button>
@@ -177,6 +219,8 @@
       <button data-tool="paint"   data-kind="biome" title="Change the hue, keep the brightness"><span class="ic">●︎</span>Biome</button>
       <button data-tool="fill"    data-kind="biome"><span class="ic">◧︎</span>Fill</button>
       <button data-tool="pick"    data-kind="biome"><span class="ic">⌖︎</span>Pick</button>
+      <span class="sep"></span>
+      <button id="bPlayer" title="Place a player and look around in first person"><span class="ic">☺︎</span>Player</button>
     </div>
     <div class="row small">
       <button id="bUndo"><span class="ic">↶︎</span>Undo</button>
@@ -228,6 +272,19 @@
     <label><span>Vertex size (bytes)</span><input id="setVBytes" type="number" min="4" max="64" step="1" inputmode="numeric"></label>
     <label><span>Show water in 3D</span><input id="setWater" type="checkbox"></label>
     <div class="note">Brightness is height 0..1 scaled by Max height, so changing Max height stretches the whole map. Vertex size only feeds the memory numbers below (your engine's vertex format).</div>
+    <div class="sub">First person (Player)</div>
+    <label><span>Eye height (m)</span><input id="setEye" type="number" min="0.2" max="50" step="0.05" inputmode="decimal"></label>
+    <label><span>Vertical FOV (°)</span><input id="setFov" type="number" min="10" max="150" step="1" inputmode="decimal"></label>
+    <div id="setFovH" class="note"></div>
+    <label><span>Walk speed (m/s)</span><input id="setWalk" type="number" min="0.1" max="200" step="0.5" inputmode="decimal"></label>
+    <label><span>Sprint multiplier</span><input id="setSprint" type="number" min="1" max="20" step="0.25" inputmode="decimal"></label>
+    <label><span>Near clip (m)</span><input id="setNear" type="number" min="0.01" max="10" step="0.01" inputmode="decimal"></label>
+    <label><span>Far clip (m, 0 = auto)</span><input id="setFar" type="number" min="0" max="100000" step="10" inputmode="decimal"></label>
+    <div class="note">Match these to your game's camera to judge the map at the size a player sees it. Press <b>Player</b>, then click / tap where to stand. Water: you wade until it is deeper than eye height − 0.3 m, then swim with your eyes 0.3 m above the surface (half speed).</div>
+    <div class="sub">Edge fog</div>
+    <label><span>Edge fog</span><input id="setFog" type="checkbox"></label>
+    <label><span>Fog width (m)</span><input id="setFogW" type="number" min="5" max="10000" step="10" inputmode="decimal"></label>
+    <div class="note">Light fog that thickens toward the map edge over this distance, so the edge fades into haze instead of ending abruptly. Shown in the orbit view and first person (also the <b>Edge fog</b> button in the 3D view). Preview only, not exported.</div>
     <div id="mapStats" class="statbox"></div>
   </div>
 </div>
@@ -318,10 +375,19 @@
       <li><b>3D</b>: the live low-poly preview at <b>full resolution</b> (one vertex per pixel, exactly what you export), flat shaded, drawn with each biome's game color. Very big maps (millions of pixels) can be slow on phones; desktops handle 2000 × 2000 fine.</li>
       <li><b>File</b>: save / open the map PNG, the palette, a grey heightmap. <b>Export</b>: a C header (or a compact <code>.bin</code> for big maps) with the full-resolution grid and the palette for your game. Formats: uint16 height + uint8 biome, uint8 height + uint8 biome, or packed uint16 (height in the top 12 bits, biome in the low 4: <code>h = v &gt;&gt; 4</code>, <code>b = v &amp; 15</code>).</li>
     </ul>
+    <h3>First person (Player)</h3>
+    <p>To check the map at the size your player sees it: press <b>Player</b>, then click / tap a spot on the map or in the 3D view. The 3D view becomes the player's eyes at full resolution; a red dot with a view cone follows you on the map (and on the small map in the corner).</p>
+    <ul>
+      <li>Desktop: click the 3D view to look with the mouse (or drag), <b>WASD</b> / arrows move, <b>Shift</b> sprints, <b>Space</b> jumps. <b>Esc</b> or <b>Exit first person</b> goes back to the orbit view.</li>
+      <li>Touch: left thumb is a joystick (push it all the way to sprint), drag on the right half to look, <b>Jump</b> button, <b>Exit first person</b> at the top.</li>
+      <li>You walk on the exact mesh and can't leave the map. Water: you wade until it is deeper than eye height − 0.3 m, then swim with your eyes 0.3 m above the surface at half speed. With <b>Chunks</b> on, chunk lines are drawn on the ground.</li>
+      <li>Map settings: eye height (1.7 m), vertical FOV (70°, with the horizontal equivalent), walk speed (5 m/s), sprint (2×), near / far clip (0.1 m / auto). Match them to your game camera.</li>
+      <li><b>Edge fog</b> (button in the 3D view, width in Map settings, off by default) fades the last 150 m toward the map edge into light haze, in both views, with haze beyond the edge.</li>
+    </ul>
     <h3>Controls</h3>
     <ul>
       <li>Map: one finger / left mouse paints. Two fingers pan and pinch-zoom. Mouse: right or middle drag pans, wheel zooms. Zoom in far enough and a pixel grid appears, so you can paint single pixels (brush size 1). <b>F</b> fits the map, <b>=</b> zooms to 1 screen pixel per map pixel.</li>
-      <li>3D: one finger / left drag orbits, two fingers pan and zoom. Mouse: right drag pans, wheel zooms.</li>
+      <li>3D: one finger / left drag orbits, two fingers pan and zoom. Mouse: right drag pans, wheel zooms. First person: see above.</li>
       <li>Keys: Ctrl+Z / Ctrl+Y undo / redo, [ and ] brush size, 1-9 and 0 pick a biome (in swatch order: 1 = Ocean ... 0 = Forest).</li>
     </ul>
     <h3>Coordinates</h3>
@@ -399,6 +465,8 @@ const NO_WATER = -1e9;
 const VMIN = 0.3;
 
 const SUN = norm3([0.3, 0.5, 0.8]);    // same fixed sun as Vert Modeler
+const SKY_COL = [0.53, 0.70, 0.86];     // 3D background
+const FOG_COL = [0.84, 0.88, 0.92];     // edge fog / haze
 const UNDO_MAX = 24;
 const UNDO_BUDGET = 384 * 1048576;     // bytes of undo snapshots kept (big maps get fewer steps)
 const SIZE_MIN = 16, SIZE_MAX = 4096;  // map width / height limits in pixels
@@ -552,6 +620,15 @@ const S = {
   chunk: 32,          // chunk edge in pixels (cells)
   vbytes: 12,         // bytes per vertex in the target engine (memory stats only)
   water: true,        // draw the water surfaces in 3D
+  // First person viewer (Player): match these to the game's camera.
+  eye: 1.7,           // eye height above the feet, meters
+  fov: 70,            // vertical field of view, degrees
+  walk: 5,            // walk speed, m/s
+  sprint: 2,          // sprint = walk x this (Shift)
+  near: 0.1,          // near clip, meters
+  far: 0,             // far clip, meters (0 = auto: enough to see the whole map)
+  fog: false,         // edge fog in the 3D view
+  fogW: 150,          // edge fog width, meters
 };
 // IMG is the map: RGBA, row-major, row 0 = north (top). H and B are decoded from it
 // (kept in sync by setPixel / decodeAll) so tools, 3D and export don't re-decode.
@@ -657,6 +734,7 @@ function b64ToBytes(b64) {
 }
 
 function settingsJSON() { return { ...S }; }
+const numOr = (v, lo, hi, d) => v !== null && v !== undefined && v !== "" && Number.isFinite(+v) ? clamp(+v, lo, hi) : d;
 function applySettings(st) {
   st = st || {};
   Object.assign(S, {
@@ -665,6 +743,10 @@ function applySettings(st) {
     sea: Number.isFinite(+st.sea) && st.sea !== null && st.sea !== undefined ? +st.sea : S.sea,
     chunk: +st.chunk || S.chunk, vbytes: +st.vbytes || S.vbytes,
     water: st.water !== false,
+    eye: numOr(st.eye, 0.2, 50, S.eye), fov: numOr(st.fov, 10, 150, S.fov),
+    walk: numOr(st.walk, 0.1, 200, S.walk), sprint: numOr(st.sprint, 1, 20, S.sprint),
+    near: numOr(st.near, 0.01, 10, S.near), far: numOr(st.far, 0, 100000, S.far),
+    fog: typeof st.fog === "boolean" ? st.fog : S.fog, fogW: numOr(st.fogW, 5, 10000, S.fogW),
   });
 }
 // Project = settings + the image as raw RGB (the autosave uses this too).
@@ -1165,8 +1247,9 @@ function drawMap() {
     mctx.moveTo(ox, oy + (mh - 0.5) * z); mctx.lineTo(ox + W, oy + (mh - 0.5) * z);
     mctx.stroke();
   }
+  if (fp.on) drawPlayerMarker(mctx, ox, oy, z, true);
   // Brush outline under the mouse (fill / pick show a small crosshair instead).
-  if (hoverPx && !pinch) {
+  if (hoverPx && !pinch && !placing) {
     const sx = ox + (hoverPx[0] + 0.5) * z, sy = oy + (hoverPx[1] + 0.5) * z;
     for (const [col, lw] of [["#000", 3], ["#fff", 1.5]]) {
       mctx.strokeStyle = col; mctx.lineWidth = lw; mctx.beginPath();
@@ -1213,6 +1296,12 @@ mapCv.addEventListener("pointerdown", (e) => {
   mapCv.setPointerCapture(e.pointerId);
   const [sx, sy] = localXY(e, mapCv);
   mapPointers.set(e.pointerId, [sx, sy]);
+  if (placing && (e.pointerType !== "mouse" || e.button === 0)) {
+    mapPointers.delete(e.pointerId);
+    const [x, y] = screenToMap(sx, sy);
+    if (!placeAtPx(x, y)) toast("That's off the map: click on the map image");
+    return;
+  }
   if (e.pointerType === "mouse" && e.button !== 0) { panDrag = [sx, sy]; return; }
   if (mapPointers.size === 2) {
     strokeCancel();
@@ -1271,7 +1360,19 @@ mapCv.addEventListener("wheel", (e) => {
 // Tiles stay at most 256 x 256 vertices so the indices fit in uint16.
 const glCv = $("gl");
 const gl = glCv.getContext("webgl2", { antialias: true, powerPreference: "high-performance" });
-let prog = null, waterProg = null, U = {}, WU = {}, gridVAO = null, gridIBO = null;
+let prog = null, waterProg = null, skyProg = null, U = {}, WU = {}, SU = {}, gridVAO = null, gridIBO = null;
+// Edge fog, shared by the terrain and water shaders.
+const FOG_GLSL = `
+uniform vec4 uFog;                 // fog width m (0 = off), world W m, world H m, unused
+uniform vec3 uFogCol, uEye;
+// 1 at the map boundary, 0 at fog width inside it. Near the eye it stays lighter, so
+// the ground at your feet close to the edge isn't washed out.
+float edgeFog(vec3 p) {
+  if (uFog.x <= 0.0) return 0.0;
+  float d = min(min(p.x, uFog.y - p.x), min(p.y, uFog.z - p.y));
+  float e = 1.0 - smoothstep(0.0, uFog.x, d);
+  return e * mix(0.45, 1.0, smoothstep(0.0, uFog.x, distance(p, uEye)));
+}`;
 let texWS = null, waterUploaded = false;
 let texH = null, texB = null, texW = 0, texHt = 0, maxTex = 0;
 let tile = { tx: 0, ty: 0, nx: 0, ny: 0, count: 0, forW: 0, forH: 0 };
@@ -1329,6 +1430,8 @@ uniform highp usampler2D uBiome;   // R8UI, biome index per pixel
 uniform ivec2 uSize;
 uniform vec3 uPal[${BIOMES.length}];
 uniform vec3 uSun;
+uniform float uGrid;               // chunk size in meters for ground lines (0 = off)
+${FOG_GLSL}
 in vec3 vWorld;
 in vec2 vGrid;
 out vec4 fragColor;
@@ -1339,9 +1442,20 @@ void main() {
   vec3 n = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
   if (n.z < 0.0) n = -n;
   float shade = 0.55 + 0.45 * max(0.0, dot(n, uSun));
-  fragColor = vec4(col * shade, 1.0);
+  col *= shade;
+  if (uGrid > 0.0) {
+    // Chunk lines on the ground (first person): about 1.5 px wide, faded out where
+    // the chunks get so small on screen that the lines would shimmer.
+    vec2 g = abs(fract(vWorld.xy / uGrid + 0.5) - 0.5) * uGrid;
+    vec2 w = fwidth(vWorld.xy);
+    vec2 l = 1.0 - smoothstep(w * 0.75, w * 1.75, g);
+    float fade = 1.0 - smoothstep(uGrid * 0.03, uGrid * 0.12, max(w.x, w.y));
+    col = mix(col, vec3(1.0), 0.45 * max(l.x, l.y) * fade);
+  }
+  col = mix(col, uFogCol, edgeFog(vWorld));
+  fragColor = vec4(col, 1.0);
 }`);
-  U = uniforms(prog, ["uHeight", "uBiome", "uSize", "uTile", "uTilesX", "uMpp", "uMaxH", "uMVP", "uPal", "uSun"]);
+  U = uniforms(prog, ["uHeight", "uBiome", "uSize", "uTile", "uTilesX", "uMpp", "uMaxH", "uMVP", "uPal", "uSun", "uGrid", "uFog", "uFogCol", "uEye"]);
   gl.useProgram(prog);
   gl.uniform1i(U.uHeight, 0); gl.uniform1i(U.uBiome, 1);
   gl.uniform3fv(U.uSun, SUN);
@@ -1382,6 +1496,7 @@ uniform float uMaxH;
 uniform vec4 uWcol[${BIOMES.length}];
 uniform bool uIsWater[${BIOMES.length}];
 uniform vec3 uSun;
+${FOG_GLSL}
 in vec3 vWorld;
 in vec2 vGrid;
 out vec4 fragColor;
@@ -1401,18 +1516,39 @@ void main() {
   vec3 n = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
   if (n.z < 0.0) n = -n;
   float shade = 0.8 + 0.2 * max(0.0, dot(n, uSun));
-  fragColor = vec4(col.rgb * shade, col.a);
+  float f = edgeFog(vWorld);
+  fragColor = vec4(mix(col.rgb * shade, uFogCol, f), mix(col.a, 1.0, f));
 }`);
-  WU = uniforms(waterProg, ["uHeight", "uWater", "uBiome", "uSize", "uTile", "uTilesX", "uMpp", "uMaxH", "uMVP", "uWcol", "uIsWater", "uSun"]);
+  WU = uniforms(waterProg, ["uHeight", "uWater", "uBiome", "uSize", "uTile", "uTilesX", "uMpp", "uMaxH", "uMVP", "uWcol", "uIsWater", "uSun", "uFog", "uFogCol", "uEye"]);
   gl.useProgram(waterProg);
   gl.uniform1i(WU.uHeight, 0); gl.uniform1i(WU.uBiome, 1); gl.uniform1i(WU.uWater, 2);
   gl.uniform3fv(WU.uSun, SUN);
   gl.uniform4fv(WU.uWcol, new Float32Array(BIOMES.flatMap((b) => b.wcol ? [b.wcol[0] / 255, b.wcol[1] / 255, b.wcol[2] / 255, b.wcol[3]] : [0, 0, 0, 0])));
   gl.uniform1iv(WU.uIsWater, new Int32Array(IS_WATER.map((x) => x ? 1 : 0)));
 
+  // Sky backdrop (drawn first when edge fog is on): haze at and below the horizon,
+  // blue above, so looking past the map edge shows fog instead of empty sky.
+  skyProg = makeProgram(`#version 300 es
+out vec2 vNdc;
+void main() {
+  vec2 p = vec2(gl_VertexID == 1 ? 3.0 : -1.0, gl_VertexID == 2 ? 3.0 : -1.0);
+  vNdc = p;
+  gl_Position = vec4(p, 0.0, 1.0);
+}`, `#version 300 es
+precision highp float;
+uniform vec3 uF, uR, uU, uSky, uFogCol;
+uniform vec2 uTan;                 // tan(fov/2) * aspect, tan(fov/2)
+in vec2 vNdc;
+out vec4 fragColor;
+void main() {
+  vec3 d = normalize(uF + vNdc.x * uTan.x * uR + vNdc.y * uTan.y * uU);
+  fragColor = vec4(mix(uFogCol, uSky, smoothstep(0.0, 0.4, d.z)), 1.0);
+}`);
+  SU = uniforms(skyProg, ["uF", "uR", "uU", "uSky", "uFogCol", "uTan"]);
+
   gridVAO = gl.createVertexArray(); gridIBO = gl.createBuffer();
   gl.enable(gl.DEPTH_TEST);
-  gl.clearColor(0.53, 0.70, 0.86, 1);
+  gl.clearColor(SKY_COL[0], SKY_COL[1], SKY_COL[2], 1);
   glCv.addEventListener("webglcontextlost", (e) => { e.preventDefault(); $("info").textContent = "3D preview lost its GPU context; reload the page to get it back (your map is autosaved)."; });
 }
 
@@ -1509,12 +1645,29 @@ function fitCamera() {
   cam.target = [W / 2, Hm / 2, S.sea];
   cam.dist = Math.max(W, Hm) * 1.15;
 }
-function cameraMVP() {
-  const w = glCv.width, h = glCv.height;
-  const cp = Math.cos(cam.pitch);
-  const eye = [cam.target[0] + cam.dist * cp * Math.cos(cam.yaw), cam.target[1] + cam.dist * cp * Math.sin(cam.yaw), cam.target[2] + cam.dist * Math.sin(cam.pitch)];
-  const proj = mat4Perspective(50 * Math.PI / 180, w / Math.max(1, h), Math.max(0.05, cam.dist * 0.01), cam.dist * 10 + S.maxH * 4 + Math.max(S.w, S.h) * S.mpp);
-  return mat4Mul(proj, mat4LookAt(eye, cam.target, [0, 0, 1]));
+// The active camera (orbit, or the player's eyes in first person): eye position,
+// forward / right / up unit vectors, vertical FOV (radians), near and far clip.
+function viewBasis() {
+  let eye, F, fovy, near, far;
+  if (fp.on) {
+    const cp = Math.cos(fp.pitch);
+    eye = [fp.x, fp.y, fp.z + S.eye];
+    F = [cp * Math.cos(fp.yaw), cp * Math.sin(fp.yaw), Math.sin(fp.pitch)];
+    fovy = S.fov * Math.PI / 180; near = S.near; far = fpFar();
+  } else {
+    const cp = Math.cos(cam.pitch);
+    eye = [cam.target[0] + cam.dist * cp * Math.cos(cam.yaw), cam.target[1] + cam.dist * cp * Math.sin(cam.yaw), cam.target[2] + cam.dist * Math.sin(cam.pitch)];
+    F = norm3([cam.target[0] - eye[0], cam.target[1] - eye[1], cam.target[2] - eye[2]]);
+    fovy = 50 * Math.PI / 180; near = Math.max(0.05, cam.dist * 0.01); far = cam.dist * 10 + S.maxH * 4 + Math.max(S.w, S.h) * S.mpp;
+  }
+  const R = norm3([F[1], -F[0], 0]);                       // F x up(0,0,1)
+  const Uv = [R[1] * F[2] - R[2] * F[1], R[2] * F[0] - R[0] * F[2], R[0] * F[1] - R[1] * F[0]];
+  return { eye, F, R, U: Uv, fovy, near, far, aspect: glCv.width / Math.max(1, glCv.height) };
+}
+function cameraMVP(v) {
+  v = v || viewBasis();
+  const proj = mat4Perspective(v.fovy, v.aspect, v.near, v.far);
+  return mat4Mul(proj, mat4LookAt(v.eye, [v.eye[0] + v.F[0], v.eye[1] + v.F[1], v.eye[2] + v.F[2]], [0, 0, 1]));
 }
 // Pan in the ground plane, along the camera's right and forward directions.
 function panCamera(dx, dy) {
@@ -1530,6 +1683,8 @@ const glPointers = new Map();
 let glPinch = null, glDrag = null;
 glCv.addEventListener("contextmenu", (e) => e.preventDefault());
 glCv.addEventListener("pointerdown", (e) => {
+  if (placing && (e.pointerType !== "mouse" || e.button === 0)) { placeFrom3D(e); return; }
+  if (fp.on) { fpDown(e); return; }
   glCv.setPointerCapture(e.pointerId);
   const p = localXY(e, glCv);
   glPointers.set(e.pointerId, p);
@@ -1542,6 +1697,7 @@ glCv.addEventListener("pointerdown", (e) => {
   }
 });
 glCv.addEventListener("pointermove", (e) => {
+  if (fp.on) { fpMove(e); return; }
   if (!glPointers.has(e.pointerId)) return;
   const p = localXY(e, glCv);
   glPointers.set(e.pointerId, p);
@@ -1559,6 +1715,7 @@ glCv.addEventListener("pointermove", (e) => {
   }
 });
 function glUp(e) {
+  fpUp(e);
   glPointers.delete(e.pointerId);
   if (glPointers.size < 2) glPinch = null;
   if (glPointers.size === 0) glDrag = null;
@@ -1566,7 +1723,242 @@ function glUp(e) {
 }
 glCv.addEventListener("pointerup", glUp);
 glCv.addEventListener("pointercancel", glUp);
-glCv.addEventListener("wheel", (e) => { e.preventDefault(); cam.dist = clamp(cam.dist * Math.exp(e.deltaY * 0.0015), 2, 1e5); }, { passive: false });
+glCv.addEventListener("wheel", (e) => { e.preventDefault(); if (fp.on) return; cam.dist = clamp(cam.dist * Math.exp(e.deltaY * 0.0015), 2, 1e5); }, { passive: false });
+
+
+//----- First Person (Player) -----||
+// Press Player, click / tap a spot on the 2D map or the 3D view, and the 3D view becomes
+// the player's eyes at full resolution. Feet follow the exact mesh surface (the same two
+// triangles per cell as the export); the map edge is a wall. Water: wade until it is
+// deeper than eye height - 0.3 m, then swim with the eyes 0.3 m above the surface.
+const FP_SWIM_EYE = 0.3, FP_SWIM_SPEED = 0.5, GRAVITY = 9.81, JUMP_V = 4.2;
+const fp = { on: false, x: 0, y: 0, z: 0, vz: 0, yaw: 0, pitch: 0, air: false, swim: false, key: "" };
+const fpKeys = new Set();
+const fpTouch = { joy: null, look: null, jx: 0, jy: 0, jump: false };
+const FP_CODES = new Set(["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "ShiftLeft", "ShiftRight", "Space"]);
+let placing = false, fpLast = 0, fpLocked = false, fpHudKey = "";
+
+const worldW = () => (S.w - 1) * S.mpp, worldH = () => (S.h - 1) * S.mpp;
+function fpFar() { return S.far > 0 ? S.far : Math.ceil(Math.hypot(worldW(), worldH(), S.maxH) * 1.05 + 50); }
+function hFovDeg(vDeg, aspect) { return 2 * Math.atan(Math.tan(vDeg * Math.PI / 360) * aspect) * 180 / Math.PI; }
+// Cell (NW pixel col, row) and position inside it: u east, v north from the SW corner.
+function cellAt(x, y) {
+  const col = clamp(x / S.mpp, 0, S.w - 1), row = clamp(S.h - 1 - y / S.mpp, 0, S.h - 1);
+  const c = Math.min(Math.floor(col), S.w - 2), r = Math.min(Math.floor(row), S.h - 2);
+  return { c, r, u: col - c, v: 1 - (row - r) };
+}
+// Ground height (m) on the mesh: cell split SW-SE-NE / SW-NE-NW.
+function groundAt(x, y) {
+  const { c, r, u, v } = cellAt(x, y), w = S.w, k = S.maxH;
+  const nw = H[r * w + c] * k, ne = H[r * w + c + 1] * k, sw = H[(r + 1) * w + c] * k, se = H[(r + 1) * w + c + 1] * k;
+  return u >= v ? sw + u * (se - sw) + v * (ne - se) : sw + v * (nw - sw) + u * (ne - nw);
+}
+// Water surface (m) over the cell: the highest wet corner, or -Infinity when dry.
+function waterAt(x, y) {
+  if (WS.length !== H.length) return -Infinity;
+  const { c, r } = cellAt(x, y);
+  let best = -Infinity;
+  for (const i of [r * S.w + c, r * S.w + c + 1, (r + 1) * S.w + c, (r + 1) * S.w + c + 1])
+    if (IS_WATER[B[i]] && WS[i] > H[i] * S.maxH && WS[i] > best) best = WS[i];
+  return best;
+}
+function fpFloor(x, y) {
+  if ((waterDirty || WS.length !== H.length) && !stroke) computeWater();   // after edits (water lags while painting)
+  const g = groundAt(x, y), w = waterAt(x, y), swimFeet = w - (S.eye - FP_SWIM_EYE);
+  return { g, w, floor: Math.max(g, swimFeet), swim: swimFeet > g };
+}
+
+function setPlacing(on) {
+  placing = on;
+  $("bPlayer").classList.toggle("on", on);
+  if (on) toast(fp.on ? "Click or tap a new spot on the map or in the 3D view" : "Click or tap a spot on the map or in the 3D view to stand there");
+}
+function enterFP(x, y, yaw) {
+  fp.x = clamp(x, 0, worldW()); fp.y = clamp(y, 0, worldH());
+  if (yaw !== undefined) { fp.yaw = yaw; fp.pitch = -0.08; }
+  fp.vz = 0; fp.air = false;
+  const f = fpFloor(fp.x, fp.y); fp.z = f.floor; fp.swim = f.swim;
+  const was = fp.on;
+  fp.on = true; setPlacing(false); fpLast = 0;
+  $("app").classList.add("fp");
+  if (!$("app").classList.contains("wide")) showTab("3d"); else onResize();
+  viewDirty = true; glKey = ""; fpHudKey = "";
+  if (!was) toast(matchMedia("(pointer: coarse)").matches ? "Left thumb moves, drag on the right looks around" : "Click the 3D view to look with the mouse · WASD · Esc exits");
+}
+function exitFP() {
+  if (!fp.on) return;
+  fp.on = false; fpKeys.clear();
+  fpTouch.joy = fpTouch.look = null; fpTouch.jx = fpTouch.jy = 0; $("joyBase").style.display = "none";
+  if (document.pointerLockElement === glCv) document.exitPointerLock();
+  $("app").classList.remove("fp", "fptouch");
+  onResize(); viewDirty = true; glKey = "";
+}
+function placeAtPx(col, row) {
+  if (col < -0.5 || row < -0.5 || col > S.w - 0.5 || row > S.h - 0.5) return false;
+  const x = col * S.mpp, y = (S.h - 1 - row) * S.mpp;
+  // Face the middle of the map (keep the old facing when moving the player).
+  const dx = worldW() / 2 - x, dy = worldH() / 2 - y;
+  enterFP(x, y, fp.on ? fp.yaw : Math.hypot(dx, dy) > 1 ? Math.atan2(dy, dx) : Math.PI / 2);
+  return true;
+}
+// Ray from the 3D view through a screen point, marched against the mesh.
+function rayGround(o, d) {
+  let t0 = 0, t1 = 1e7;
+  const lo = [0, 0, -1], hi = [worldW(), worldH(), S.maxH + 1];
+  for (let k = 0; k < 3; k++) {
+    if (Math.abs(d[k]) < 1e-12) { if (o[k] < lo[k] || o[k] > hi[k]) return null; continue; }
+    const a = (lo[k] - o[k]) / d[k], b = (hi[k] - o[k]) / d[k];
+    t0 = Math.max(t0, Math.min(a, b)); t1 = Math.min(t1, Math.max(a, b));
+  }
+  if (t0 > t1) return null;
+  const at = (t) => [o[0] + d[0] * t, o[1] + d[1] * t, o[2] + d[2] * t];
+  const below = (t) => { const p = at(t); return p[2] <= groundAt(p[0], p[1]); };
+  const step = S.mpp * 0.5;
+  for (let t = t0, prev = t0; t <= t1 + step; prev = t, t += step) {
+    const tt = Math.min(t, t1);
+    if (below(tt)) {
+      let a = prev, b = tt;
+      for (let i = 0; i < 24; i++) { const m = (a + b) / 2; if (below(m)) b = m; else a = m; }
+      return at(b);
+    }
+  }
+  return null;
+}
+function placeFrom3D(e) {
+  const v = viewBasis(), [sx, sy] = localXY(e, glCv);
+  const nx = sx / glCv.clientWidth * 2 - 1, ny = 1 - sy / glCv.clientHeight * 2, t = Math.tan(v.fovy / 2);
+  const d = norm3([v.F[0] + nx * t * v.aspect * v.R[0] + ny * t * v.U[0], v.F[1] + nx * t * v.aspect * v.R[1] + ny * t * v.U[1], v.F[2] + nx * t * v.aspect * v.R[2] + ny * t * v.U[2]]);
+  const hit = rayGround(v.eye, d);
+  if (!hit) { toast("That's off the map: click on the terrain"); return; }
+  enterFP(hit[0], hit[1], fp.on ? fp.yaw : Math.atan2(d[1], d[0]));
+}
+
+// Look and move input.
+function fpLook(dx, dy, k) {
+  fp.yaw -= dx * k;
+  fp.pitch = clamp(fp.pitch - dy * k, -1.5, 1.5);
+}
+function fpDown(e) {
+  const p = localXY(e, glCv);
+  try { glCv.setPointerCapture(e.pointerId); } catch (err) { /* pointer already gone */ }
+  if (e.pointerType === "mouse") {
+    if (!fpLocked && glCv.requestPointerLock) {
+      try { const r = glCv.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (err) { /* drag to look instead */ }
+    }
+    fpTouch.look = { id: e.pointerId, p };
+    return;
+  }
+  $("app").classList.add("fptouch");
+  if (p[0] < glCv.clientWidth / 2 && !fpTouch.joy) {
+    fpTouch.joy = { id: e.pointerId, x0: p[0], y0: p[1] };
+    const jb = $("joyBase"); jb.style.display = "block"; jb.style.left = p[0] + "px"; jb.style.top = p[1] + "px";
+    $("joyKnob").style.transform = "";
+  } else if (!fpTouch.look) fpTouch.look = { id: e.pointerId, p };
+}
+const JOY_R = 50;
+function fpMove(e) {
+  const p = localXY(e, glCv);
+  if (fpTouch.joy && e.pointerId === fpTouch.joy.id) {
+    let dx = p[0] - fpTouch.joy.x0, dy = p[1] - fpTouch.joy.y0;
+    const m = Math.hypot(dx, dy);
+    if (m > JOY_R) { dx *= JOY_R / m; dy *= JOY_R / m; }
+    fpTouch.jx = dx / JOY_R; fpTouch.jy = -dy / JOY_R;
+    $("joyKnob").style.transform = `translate(${dx}px, ${dy}px)`;
+  } else if (fpTouch.look && e.pointerId === fpTouch.look.id) {
+    if (!fpLocked) fpLook(p[0] - fpTouch.look.p[0], p[1] - fpTouch.look.p[1], e.pointerType === "mouse" ? 0.004 : 0.006);
+    fpTouch.look.p = p;
+  }
+}
+function fpUp(e) {
+  if (fpTouch.joy && e.pointerId === fpTouch.joy.id) { fpTouch.joy = null; fpTouch.jx = fpTouch.jy = 0; $("joyBase").style.display = "none"; }
+  if (fpTouch.look && e.pointerId === fpTouch.look.id) fpTouch.look = null;
+}
+document.addEventListener("mousemove", (e) => { if (fp.on && fpLocked) fpLook(e.movementX || 0, e.movementY || 0, 0.0022); });
+document.addEventListener("pointerlockchange", () => {
+  const locked = document.pointerLockElement === glCv;
+  // Esc while the mouse is captured releases it (the browser eats that key): treat it
+  // as Esc = back to the orbit view, unless the window just lost focus.
+  if (!locked && fpLocked && fp.on && !document.hidden && document.hasFocus()) exitFP();
+  fpLocked = locked; fpHudKey = "";
+});
+window.addEventListener("keyup", (e) => fpKeys.delete(e.code));
+window.addEventListener("blur", () => fpKeys.clear());
+$("fpExit").addEventListener("click", exitFP);
+$("fpJump").addEventListener("pointerdown", (e) => { e.preventDefault(); fpTouch.jump = true; });
+$("bPlayer").addEventListener("click", () => setPlacing(!placing));
+$("bFog").addEventListener("click", () => { S.fog = !S.fog; syncFogUI(); glKey = ""; scheduleSave(); });
+function syncFogUI() { $("bFog").classList.toggle("on", S.fog); $("setFog").checked = S.fog; }
+
+// One simulation step per animation frame.
+function fpUpdate(now) {
+  const dt = fpLast ? Math.min(0.25, (now - fpLast) / 1000) : 0;
+  fpLast = now;
+  let fwd = 0, side = 0;
+  if (fpKeys.has("KeyW") || fpKeys.has("ArrowUp")) fwd += 1;
+  if (fpKeys.has("KeyS") || fpKeys.has("ArrowDown")) fwd -= 1;
+  if (fpKeys.has("KeyD") || fpKeys.has("ArrowRight")) side += 1;
+  if (fpKeys.has("KeyA") || fpKeys.has("ArrowLeft")) side -= 1;
+  let sprint = fpKeys.has("ShiftLeft") || fpKeys.has("ShiftRight");
+  if (fpTouch.joy) { fwd += fpTouch.jy; side += fpTouch.jx; if (Math.hypot(fpTouch.jx, fpTouch.jy) > 0.95) sprint = true; }
+  const len = Math.hypot(fwd, side);
+  if (len > 1) { fwd /= len; side /= len; }
+  const speed = S.walk * (sprint ? S.sprint : 1) * (fp.swim ? FP_SWIM_SPEED : 1);
+  const cy = Math.cos(fp.yaw), sy = Math.sin(fp.yaw);
+  fp.x = clamp(fp.x + (cy * fwd + sy * side) * speed * dt, 0, worldW());
+  fp.y = clamp(fp.y + (sy * fwd - cy * side) * speed * dt, 0, worldH());
+  const f = fpFloor(fp.x, fp.y);
+  fp.swim = f.swim;
+  const jump = fpKeys.has("Space") || fpTouch.jump;
+  fpTouch.jump = false;
+  if (!fp.air) {
+    if (jump && !f.swim) { fp.air = true; fp.vz = JUMP_V; }
+    else if (f.floor < fp.z - 0.6) { fp.air = true; fp.vz = 0; }   // walked off a ledge: fall
+    else fp.z = f.floor;                                            // follow the ground
+  }
+  if (fp.air) {
+    fp.vz -= GRAVITY * dt; fp.z += fp.vz * dt;
+    if (fp.z <= f.floor) { fp.z = f.floor; fp.air = false; fp.vz = 0; }
+  }
+  const key = [fp.x, fp.y, fp.z, fp.yaw, fp.pitch].map((v) => v.toFixed(3)).join(",");
+  if (key !== fp.key) { fp.key = key; viewDirty = true; }
+  updateFPHud(f, sprint && len > 0);
+}
+const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+function updateFPHud(f, sprinting) {
+  const W = worldW(), Hm = worldH(), col = fp.x / S.mpp, row = S.h - 1 - fp.y / S.mpp;
+  const edges = [["W", fp.x], ["E", W - fp.x], ["S", fp.y], ["N", Hm - fp.y]].sort((a, b) => a[1] - b[1]);
+  const hdg = ((90 - fp.yaw * 180 / Math.PI) % 360 + 360) % 360;
+  const { c, r } = cellAt(fp.x, fp.y), aspect = glCv.width / Math.max(1, glCv.height);
+  const depth = f.w - f.g;
+  const wet = f.w > f.g ? (f.swim ? `  swimming (${depth.toFixed(1)} m deep)` : `  wading ${depth.toFixed(1)} m`) : "";
+  const t = `x ${fp.x.toFixed(1)}  y ${fp.y.toFixed(1)} m  px ${Math.round(col)},${Math.round(row)}  chunk ${Math.floor(c / S.chunk)},${Math.floor(r / S.chunk)}\n` +
+    `ground ${f.g.toFixed(1)} m  eye ${(fp.z + S.eye).toFixed(1)} m  ${BIOMES[B[r * S.w + c]].name}${wet}\n` +
+    `edge ${edges[0][1].toFixed(0)} m (${edges[0][0]})  facing ${COMPASS[Math.round(hdg / 45) % 8]} ${hdg.toFixed(0)}°\n` +
+    `FOV ${S.fov}° v / ${hFovDeg(S.fov, aspect).toFixed(0)}° h  ${sprinting ? "sprint " + (S.walk * S.sprint).toFixed(1) : "walk " + S.walk} m/s`;
+  if (t !== fpHudKey) { fpHudKey = t; $("fpHud").textContent = t; }
+  $("fpHint").textContent = fpLocked ? "WASD move · Shift sprint · Space jump · Esc exits" : "Click to look around (or drag) · WASD move · Shift sprint · Space jump · Esc exits";
+}
+// Player dot + view cone on a 2D map drawn at (ox, oy) with z screen px per map px.
+function drawPlayerMarker(ctx, ox, oy, z, big) {
+  const sx = ox + (fp.x / S.mpp + 0.5) * z, sy = oy + (S.h - 1 - fp.y / S.mpp + 0.5) * z;
+  const half = hFovDeg(S.fov, glCv.width / Math.max(1, glCv.height)) * Math.PI / 360, a = -fp.yaw, R = big ? 34 : 22;
+  ctx.fillStyle = "#ffe06a55"; ctx.strokeStyle = "#ffe06a"; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(sx, sy); ctx.arc(sx, sy, R, a - half, a + half); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(sx, sy, big ? 5 : 4, 0, Math.PI * 2);
+  ctx.fillStyle = "#ff3b30"; ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
+}
+function drawFPMini() {
+  const cv = $("fpMini"), dpr = window.devicePixelRatio || 1, cw = cv.clientWidth, ch = cv.clientHeight;
+  if (!cw) return;
+  if (cv.width !== Math.round(cw * dpr)) { cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr); }
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = "#0d0e12"; ctx.fillRect(0, 0, cw, ch);
+  const z = Math.min(cw / S.w, ch / S.h), ox = (cw - S.w * z) / 2, oy = (ch - S.h * z) / 2;
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(off, ox, oy, S.w * z, S.h * z);
+  drawPlayerMarker(ctx, ox, oy, z, false);
+}
 
 //----- Stats -----||
 // What a game pays if it builds flat-shaded, unindexed chunk meshes: 2 triangles per
@@ -2090,6 +2482,9 @@ function syncSettingsUI() {
   $("setName").value = S.name;
   $("setMaxH").value = S.maxH; $("setSea").value = S.sea; $("setChunk").value = String(S.chunk);
   $("setVBytes").value = S.vbytes; $("setWater").checked = S.water;
+  $("setEye").value = S.eye; $("setFov").value = S.fov; $("setWalk").value = S.walk; $("setSprint").value = S.sprint;
+  $("setNear").value = S.near; $("setFar").value = S.far; $("setFogW").value = S.fogW;
+  syncFogUI(); updateFovNote();
   updateStats();
 }
 $("bMapSet").addEventListener("click", () => { syncSettingsUI(); openModal("mapModal"); });
@@ -2115,6 +2510,22 @@ numSetting("setSea", "sea", 0, 4000);
 numSetting("setVBytes", "vbytes", 4, 64, true);
 $("setChunk").addEventListener("change", (e) => { S.chunk = +e.target.value; touched(false); updateSizePreview(); });
 $("setWater").addEventListener("change", (e) => { S.water = e.target.checked; glRedraw = true; scheduleSave(); });
+// First person / fog settings only change the view: no water or stats recompute.
+function updateFovNote() {
+  const a = glCv.clientWidth / Math.max(1, glCv.clientHeight);
+  $("setFovH").textContent = `= ${hFovDeg(S.fov, a).toFixed(0)}° horizontal in this 3D view (${a.toFixed(2)}:1), ${hFovDeg(S.fov, 16 / 9).toFixed(0)}° at 16:9, ${hFovDeg(S.fov, 4 / 3).toFixed(0)}° at 4:3. Far clip ${S.far > 0 ? S.far + " m" : "auto = " + fpFar() + " m (corner to corner)"}.`;
+}
+const viewSetting = (id, key, lo, hi) => $(id).addEventListener("change", (e) => {
+  const v = parseFloat(e.target.value);
+  if (!Number.isFinite(v)) { e.target.value = S[key]; return; }
+  S[key] = clamp(v, lo, hi); e.target.value = S[key];
+  updateFovNote(); glKey = ""; viewDirty = true; fpHudKey = ""; scheduleSave();
+});
+viewSetting("setEye", "eye", 0.2, 50); viewSetting("setFov", "fov", 10, 150);
+viewSetting("setWalk", "walk", 0.1, 200); viewSetting("setSprint", "sprint", 1, 20);
+viewSetting("setNear", "near", 0.01, 10); viewSetting("setFar", "far", 0, 100000);
+viewSetting("setFogW", "fogW", 5, 10000);
+$("setFog").addEventListener("change", (e) => { S.fog = e.target.checked; syncFogUI(); glKey = ""; scheduleSave(); });
 
 $("bGen").addEventListener("click", () => { if (!$("genSeed").value) $("genSeed").value = 1; openModal("genModal"); });
 $("gmClose").addEventListener("click", closeModals);
@@ -2166,6 +2577,8 @@ $("bGrid").addEventListener("click", () => { showChunks = !showChunks; $("bGrid"
 window.addEventListener("keydown", (e) => {
   if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
   const k = e.key.toLowerCase();
+  if (k === "escape" && (fp.on || placing)) { closeModals(); if (placing) setPlacing(false); else exitFP(); return; }
+  if (fp.on && FP_CODES.has(e.code) && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); fpKeys.add(e.code); return; }
   if ((e.ctrlKey || e.metaKey) && k === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); }
   else if ((e.ctrlKey || e.metaKey) && k === "y") { e.preventDefault(); redo(); }
   else if (k === "f") fitMap();
@@ -2207,13 +2620,19 @@ function mapVisible() { return $("app").classList.contains("wide") || $("mapPane
 
 function frame(now) {
   requestAnimationFrame(frame);
+  if (fp.on) {
+    fpUpdate(now);
+    if (!mapVisible() && redrawOffscreen()) viewDirty = true;
+    if (viewDirty) drawFPMini();
+  }
   if (mapVisible()) {
     if (redrawOffscreen()) { viewDirty = true; if (!stroke) updateHover(); }
     if (viewDirty) { drawMap(); viewDirty = false; }
   }
   if (gl && glVisible()) {
     // Only the changed rectangle goes to the GPU, so the 3D view follows the brush live.
-    const key = [cam.yaw, cam.pitch, cam.dist, ...cam.target, glCv.width, glCv.height, S.water, S.sea, S.mpp, S.maxH, S.w, S.h].join(",");
+    const key = [cam.yaw, cam.pitch, cam.dist, ...cam.target, glCv.width, glCv.height, S.water, S.sea, S.mpp, S.maxH, S.w, S.h,
+      fp.on, fp.on && fp.key, S.eye, S.fov, S.near, S.far, S.fog, S.fogW, showChunks].join(",");
     const want = dirtyGL[0] <= dirtyGL[2] || glRedraw || key !== glKey || !texH || (!stroke && (waterDirty || !waterUploaded));
     const wait = stroke && glCost > 30 && now - lastGLDraw < glCost * 4;
     if (want && !wait) {
@@ -2231,9 +2650,24 @@ function drawGL(timed) {
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   if (glTooBig || !texH) { updateGLNote(); return; }
   const t0 = performance.now();
-  const mvp = cameraMVP();
+  const view = viewBasis(), mvp = cameraMVP(view);
+  const fog = [S.fog ? S.fogW : 0, worldW(), worldH(), 0];
+  if (S.fog) {
+    // Haze backdrop behind everything, so past the map edge there is fog, not sky.
+    gl.disable(gl.DEPTH_TEST); gl.depthMask(false);
+    gl.useProgram(skyProg);
+    gl.uniform3fv(SU.uF, view.F); gl.uniform3fv(SU.uR, view.R); gl.uniform3fv(SU.uU, view.U);
+    gl.uniform3fv(SU.uSky, SKY_COL); gl.uniform3fv(SU.uFogCol, FOG_COL);
+    const t = Math.tan(view.fovy / 2);
+    gl.uniform2f(SU.uTan, t * view.aspect, t);
+    gl.bindVertexArray(null);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.enable(gl.DEPTH_TEST); gl.depthMask(true);
+  }
   gl.useProgram(prog);
   gl.uniformMatrix4fv(U.uMVP, false, mvp);
+  gl.uniform4fv(U.uFog, fog); gl.uniform3fv(U.uFogCol, FOG_COL); gl.uniform3fv(U.uEye, view.eye);
+  gl.uniform1f(U.uGrid, fp.on && showChunks ? S.chunk * S.mpp : 0);
   gl.uniform2i(U.uSize, S.w, S.h);
   gl.uniform2i(U.uTile, tile.tx, tile.ty);
   gl.uniform1i(U.uTilesX, tile.nx);
@@ -2247,6 +2681,7 @@ function drawGL(timed) {
     gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false);
     gl.useProgram(waterProg);
     gl.uniformMatrix4fv(WU.uMVP, false, mvp);
+    gl.uniform4fv(WU.uFog, fog); gl.uniform3fv(WU.uFogCol, FOG_COL); gl.uniform3fv(WU.uEye, view.eye);
     gl.uniform2i(WU.uSize, S.w, S.h);
     gl.uniform2i(WU.uTile, tile.tx, tile.ty);
     gl.uniform1i(WU.uTilesX, tile.nx);
