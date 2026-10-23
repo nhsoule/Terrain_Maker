@@ -1,0 +1,1427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- user-scalable=no + touch-action:none (below) stop the browser zooming/scrolling,
+     so every finger gesture comes to us. viewport-fit=cover uses the whole screen on
+     notched phones; we pad with safe-area insets instead. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Terrain Maker">
+<meta name="application-name" content="Terrain Maker">
+<meta name="theme-color" content="#16171d">
+<meta name="pofa-terrain-maker-version" content="v1">
+<title>Terrain Maker</title>
+<style>
+  /* ----- Page Setup -----|| */
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: #16171d; color: #e8e8ee;
+    font: 14px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+  }
+  #app { position: fixed; inset: 0; display: flex; flex-direction: column; }
+
+  /* ----- Views (2D map + 3D preview) -----|| */
+  /* Narrow screens (phones): one pane at a time, switched with the Map / 3D tabs.
+     Wide screens: both side by side, the tabs hide. */
+  #view { flex: 1; position: relative; min-height: 0; display: flex; }
+  .pane { position: relative; flex: 1; min-width: 0; display: none; }
+  .pane.show { display: block; }
+  #app.wide .pane { display: block; }
+  #app.wide #glPane { border-left: 1px solid #2c2e3a; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  #mapPane { background: #0d0e12; }
+
+  #tabs { position: absolute; right: 8px; top: calc(env(safe-area-inset-top) + 6px); display: flex; z-index: 2;
+          border-radius: 9px; overflow: hidden; border: 1px solid #fff2; }
+  #app.wide #tabs { display: none; }
+  #tabs button { min-width: 52px; min-height: 34px; border: 0; background: #1f2029d0; color: #e8e8ee;
+                 font: 600 13px system-ui, sans-serif; touch-action: manipulation; }
+  #tabs button.on { background: #e0b43a; color: #16171d; }
+
+  /* ----- Info Overlays -----|| */
+  #info {
+    position: absolute; left: 0; right: 0; top: 0; padding: calc(env(safe-area-inset-top) + 8px) 12px 8px;
+    pointer-events: none; font-size: 13px; color: #b9bccb; text-shadow: 0 1px 2px #000;
+  }
+  #info:empty { display: none; }
+  /* One small, dim line: map size, world size, chunks, what the game will upload. */
+  #stats, #hover, #glNote {
+    position: absolute; left: 10px; pointer-events: none;
+    font: 11px ui-monospace, Menlo, Consolas, monospace;
+    color: #8a8ea0; text-shadow: 0 1px 2px #000; white-space: pre;
+  }
+  #stats { top: calc(env(safe-area-inset-top) + 6px); }
+  #app:not(.wide) #stats { top: calc(env(safe-area-inset-top) + 46px); }   /* below the tabs */
+  #hover { bottom: 6px; color: #b9bccb; }
+  #glNote { bottom: 6px; }
+
+  /* ----- Brush Bar -----|| */
+  #brushbar { padding: 6px 10px 4px; background: #1f2029; border-top: 1px solid #2c2e3a; display: flex; flex-direction: column; gap: 6px; }
+  .sliders { display: flex; gap: 12px; align-items: center; }
+  .sliders label { flex: 1; display: flex; align-items: center; gap: 6px; font-size: 12px; color: #b9bccb; min-width: 0; }
+  .sliders label b { font: 12px ui-monospace, Menlo, Consolas, monospace; color: #e8e8ee; min-width: 3.2em; text-align: right; font-weight: 400; }
+  input[type=range] { flex: 1; min-width: 0; height: 28px; accent-color: #e0b43a; }
+  #swatches { display: none; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+  #swatches.show { display: grid; }
+  .swatch { height: 38px; border-radius: 8px; border: 2px solid #0000; padding: 0; touch-action: manipulation;
+            font: 600 10px system-ui, sans-serif; color: #000a; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 2px; }
+  .swatch.on { border-color: #fff; box-shadow: 0 0 0 2px #000 inset; }
+
+  /* ----- Toolbar (two rows: layer + tools on top, actions below) -----|| */
+  #toolbar {
+    display: flex; flex-direction: column; gap: 4px;
+    padding: 6px 6px calc(env(safe-area-inset-bottom) + 6px);
+    background: #1f2029; border-top: 1px solid #2c2e3a;
+  }
+  .row { display: flex; gap: 4px; }
+  #toolbar button {
+    flex: 1; min-width: 0; min-height: 50px;
+    background: #2a2c38; color: #e8e8ee; border: 0; border-radius: 10px;
+    font: inherit; font-size: 12px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 2px; touch-action: manipulation;
+  }
+  #toolbar .row.small button { min-height: 44px; font-size: 11px; }
+  #toolbar button .ic { font-size: 18px; line-height: 1; }
+  #toolbar button.on { background: #e0b43a; color: #16171d; }
+  #toolbar button.layer.on { background: #3a6fd8; color: #fff; }
+  #toolbar button:disabled { opacity: 0.35; }
+  #toolbar button:active { filter: brightness(1.3); }
+  #toolbar .sep { width: 6px; flex: 0 0 6px; }
+  .hide { display: none !important; }
+
+  /* ----- Modals -----|| */
+  .modal {
+    display: none; position: fixed; inset: 0; background: #000d;
+    padding: calc(env(safe-area-inset-top) + 16px) 12px calc(env(safe-area-inset-bottom) + 16px);
+    box-sizing: border-box; flex-direction: column; gap: 8px; z-index: 10; overflow-y: auto;
+  }
+  .modal.show { display: flex; }
+  .modal .head { display: flex; align-items: center; gap: 8px; }
+  .modal .head span { flex: 1; font-weight: 600; font-size: 16px; }
+  .modal .note { font-size: 12px; color: #9a9db0; }
+  .modal label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #b9bccb; }
+  .modal label > span:first-child { min-width: 9.5em; }
+  .modal input[type=text], .modal input[type=number], .modal select {
+    flex: 1; min-height: 40px; box-sizing: border-box; padding: 0 10px; min-width: 0;
+    background: #0d0e12; color: #fff; border: 1px solid #2c2e3a; border-radius: 8px;
+    font: 16px ui-monospace, Menlo, Consolas, monospace; -webkit-user-select: text; user-select: text;
+  }
+  .modal input[type=checkbox] { width: 22px; height: 22px; accent-color: #e0b43a; }
+  .modal button { min-height: 44px; padding: 0 16px; border: 0; border-radius: 10px; background: #e0b43a; color: #16171d; font: inherit; font-weight: 600; touch-action: manipulation; }
+  .modal button.alt { background: #2a2c38; color: #e8e8ee; }
+  .btnrow { display: flex; gap: 6px; flex-wrap: wrap; }
+  .btnrow button { flex: 1; min-width: 9em; }
+  .card { background: #1f2029; border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px; max-width: 640px; width: 100%; margin: 0 auto; box-sizing: border-box; }
+  .statbox { font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace; color: #cfe3c0; background: #0d0e12;
+             border: 1px solid #2c2e3a; border-radius: 8px; padding: 8px; white-space: pre-wrap; }
+  #exportText {
+    flex: 1; min-height: 200px; width: 100%; box-sizing: border-box; resize: none;
+    background: #0d0e12; color: #cfe3c0; border: 1px solid #2c2e3a; border-radius: 8px;
+    font: 12px/1.35 ui-monospace, Menlo, Consolas, monospace; padding: 8px;
+    -webkit-user-select: text; user-select: text; white-space: pre; overflow: auto;
+  }
+  #helpModal .card { font-size: 14px; line-height: 1.45; color: #d8d9e2; }
+  #helpModal h3 { margin: 6px 0 0; font-size: 15px; color: #e0b43a; }
+  #helpModal p, #helpModal ul { margin: 2px 0; }
+  #helpModal ul { padding-left: 20px; }
+  #helpModal code { font: 12px ui-monospace, Menlo, Consolas, monospace; color: #cfe3c0; }
+
+  /* Small transient message ("Copied!") */
+  #toast {
+    position: fixed; left: 50%; bottom: 190px; transform: translateX(-50%);
+    background: #000c; color: #fff; padding: 8px 14px; border-radius: 20px; text-align: center;
+    opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 20; max-width: 85vw;
+  }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="view">
+    <div id="mapPane" class="pane show">
+      <canvas id="map"></canvas>
+      <div id="stats"></div>
+      <div id="hover"></div>
+    </div>
+    <div id="glPane" class="pane">
+      <canvas id="gl"></canvas>
+      <div id="info"></div>
+      <div id="glNote"></div>
+    </div>
+    <div id="tabs">
+      <button data-tab="map" class="on">Map</button>
+      <button data-tab="3d">3D</button>
+    </div>
+  </div>
+
+  <div id="brushbar">
+    <div id="swatches"></div>
+    <div class="sliders">
+      <label>Size <input id="brushSize" type="range" min="1" max="64" step="1" value="10"><b id="brushSizeV"></b></label>
+      <label id="strengthLbl">Strength <input id="brushStr" type="range" min="0.05" max="1" step="0.05" value="0.5"><b id="brushStrV"></b></label>
+    </div>
+  </div>
+
+  <div id="toolbar">
+    <div class="row">
+      <button id="bLayerH" class="layer" data-layer="height"><span class="ic">▲︎</span>Height</button>
+      <button id="bLayerB" class="layer" data-layer="biome"><span class="ic">▦︎</span>Biome</button>
+      <span class="sep"></span>
+      <button data-tool="raise"   data-for="height"><span class="ic">⇧︎</span>Raise</button>
+      <button data-tool="lower"   data-for="height"><span class="ic">⇩︎</span>Lower</button>
+      <button data-tool="smooth"  data-for="height"><span class="ic">≈</span>Smooth</button>
+      <button data-tool="flatten" data-for="height"><span class="ic">▬︎</span>Flatten</button>
+      <button data-tool="paint"   data-for="biome"><span class="ic">●︎</span>Paint</button>
+      <button data-tool="fill"    data-for="biome"><span class="ic">◧︎</span>Fill</button>
+      <button data-tool="pick"    data-for="biome"><span class="ic">⌖︎</span>Pick</button>
+    </div>
+    <div class="row small">
+      <button id="bUndo"><span class="ic">↶︎</span>Undo</button>
+      <button id="bRedo"><span class="ic">↷︎</span>Redo</button>
+      <button id="bGrid"><span class="ic">▦︎</span>Chunks</button>
+      <button id="bGen"><span class="ic">✱︎</span>Generate</button>
+      <button id="bAuto"><span class="ic">✎︎</span>Auto biome</button>
+      <button id="bMapSet"><span class="ic">⚙︎</span>Map</button>
+      <button id="bFile"><span class="ic">▤︎</span>File</button>
+      <button id="bExport"><span class="ic">⇪</span>Export</button>
+      <button id="bHelp"><span class="ic">?</span>Help</button>
+    </div>
+  </div>
+</div>
+
+<!-- ----- Map Settings -----|| -->
+<div id="mapModal" class="modal">
+  <div class="card">
+    <div class="head"><span>Map settings</span><button id="mmClose">Done</button></div>
+    <label><span>Name (for export)</span><input id="setName" type="text" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+    <label><span>Map size (pixels)</span>
+      <select id="setSize"><option>64</option><option>128</option><option>256</option><option>512</option><option>1024</option></select></label>
+    <label><span>Meters per pixel</span><input id="setMpp" type="number" min="0.25" max="64" step="0.25" inputmode="decimal"></label>
+    <label><span>Max height (m)</span><input id="setMaxH" type="number" min="1" max="4000" step="1" inputmode="decimal"></label>
+    <label><span>Sea level (m)</span><input id="setSea" type="number" min="0" max="4000" step="0.5" inputmode="decimal"></label>
+    <label><span>Chunk size (pixels)</span>
+      <select id="setChunk"><option>8</option><option>16</option><option>32</option><option>64</option><option>128</option></select></label>
+    <label><span>Show water plane</span><input id="setWater" type="checkbox"></label>
+    <div class="note">Changing the map size resamples what you painted (Undo brings it back). Height is stored 0..1 and scaled by Max height, so changing Max height stretches the whole map.</div>
+    <div id="mapStats" class="statbox"></div>
+  </div>
+</div>
+
+<!-- ----- Generate -----|| -->
+<div id="genModal" class="modal">
+  <div class="card">
+    <div class="head"><span>Generate a base</span><button id="gmClose" class="alt">Cancel</button></div>
+    <div class="note">Seeded noise to start from, then paint over it. Same seed and settings = same map. This replaces the height layer (Undo brings it back).</div>
+    <label><span>Seed</span><input id="genSeed" type="number" step="1" inputmode="numeric"><button id="genRand" class="alt" style="min-width:0">⚄︎</button></label>
+    <label><span>Feature size</span><input id="genScale" type="range" min="0.1" max="1" step="0.05" value="0.45"></label>
+    <label><span>Roughness</span><input id="genRough" type="range" min="0.3" max="0.7" step="0.02" value="0.45"></label>
+    <label><span>Island (sea at edges)</span><input id="genIsland" type="checkbox" checked></label>
+    <label><span>Terraces (steps)</span><input id="genTerr" type="number" min="0" max="32" step="1" value="0" inputmode="numeric"></label>
+    <label><span>Auto biomes after</span><input id="genAuto" type="checkbox" checked></label>
+    <div class="btnrow"><button id="genGo">Generate</button></div>
+  </div>
+</div>
+
+<!-- ----- Auto Biome -----|| -->
+<div id="autoModal" class="modal">
+  <div class="card">
+    <div class="head"><span>Auto biome</span><button id="amClose" class="alt">Cancel</button></div>
+    <div class="note">Suggests biomes from height and slope: water below sea level, sand on the shore, rock on steep slopes, snow up high, forest and grass in between. It overwrites the biome layer (Undo brings it back); paint over it after.</div>
+    <label><span>Beach height (m)</span><input id="autoBeach" type="number" min="0" step="0.5" value="2" inputmode="decimal"></label>
+    <label><span>Rock slope (°)</span><input id="autoRock" type="number" min="5" max="85" step="1" value="40" inputmode="decimal"></label>
+    <label><span>Snow above (% of max)</span><input id="autoSnow" type="number" min="0" max="100" step="1" value="78" inputmode="decimal"></label>
+    <label><span>Forest amount (%)</span><input id="autoForest" type="number" min="0" max="100" step="1" value="40" inputmode="decimal"></label>
+    <div class="btnrow"><button id="autoGo">Apply</button></div>
+  </div>
+</div>
+
+<!-- ----- File -----|| -->
+<div id="fileModal" class="modal">
+  <div class="card">
+    <div class="head"><span>File</span><button id="fmClose" class="alt">Close</button></div>
+    <div class="note">Your map autosaves in this browser. A project file (.json) keeps everything at full 16-bit height precision; the PNGs are 8-bit, handy for editing in other paint apps.</div>
+    <div class="btnrow"><button id="fSave">Save project (.json)</button><button id="fLoad" class="alt">Load project</button></div>
+    <div class="btnrow"><button id="fPngH" class="alt">Save height PNG</button><button id="fPngB" class="alt">Save biome PNG</button></div>
+    <div class="btnrow"><button id="fImpH" class="alt">Import height PNG</button><button id="fImpB" class="alt">Import biome PNG</button></div>
+    <div class="note">Height PNG: brighter = higher (black = 0 m, white = Max height). Biome PNG: each pixel snaps to the nearest biome color. Imports are resized to the current map size.</div>
+    <div class="btnrow"><button id="fNew" class="alt">New flat map</button></div>
+    <input id="fileIn" type="file" class="hide">
+  </div>
+</div>
+
+<!-- ----- Export -----|| -->
+<div id="exportModal" class="modal">
+  <div class="head">
+    <span>Export for pofa</span>
+    <button id="eCopy">Copy</button>
+    <button id="eSave" class="alt">Save .h</button>
+    <button id="eClose" class="alt">Close</button>
+  </div>
+  <label><span>Height storage</span>
+    <select id="eBits"><option value="16">uint16 (65536 levels)</option><option value="8">uint8 (256 levels)</option></select></label>
+  <div id="eNote" class="note"></div>
+  <textarea id="exportText" readonly spellcheck="false"></textarea>
+</div>
+
+<!-- ----- Help -----|| -->
+<div id="helpModal" class="modal">
+  <div class="card">
+    <div class="head"><span>Terrain Maker</span><button id="hmClose">Got it</button></div>
+    <p>Paint the world map as a picture. Each pixel is one terrain vertex: its <b>height</b> comes from the Height layer (brighter = higher) and its <b>biome</b> (color) from the Biome layer. pofa turns the grid into chunked low-poly meshes, so the world is the same every launch.</p>
+    <h3>Workflow</h3>
+    <ul>
+      <li><b>Map</b>: pick the size, meters per pixel, max height, sea level and chunk size. The top-left line shows the world size and what the meshes will cost.</li>
+      <li><b>Generate</b> (optional): seeded noise as a rough start. Then design it by hand.</li>
+      <li><b>Height</b> layer: Raise, Lower, Smooth, Flatten (flattens to the height where you start the stroke, good for plateaus and build sites).</li>
+      <li><b>Biome</b> layer: Paint, Fill (flood-fills a connected area), Pick (eyedropper). <b>Auto biome</b> suggests biomes from height and slope.</li>
+      <li><b>3D</b>: the live low-poly preview, flat shaded like the game.</li>
+      <li><b>Export</b>: a C header with the height and biome grids for pofa.</li>
+    </ul>
+    <h3>Controls</h3>
+    <ul>
+      <li>Map: one finger / left mouse paints. Two fingers pan and pinch-zoom. Mouse: right or middle drag pans, wheel zooms.</li>
+      <li>3D: one finger / left drag orbits, two fingers pan and zoom. Mouse: right drag pans, wheel zooms.</li>
+      <li>Keys: Ctrl+Z / Ctrl+Y undo / redo, [ and ] brush size, 1-7 pick a biome.</li>
+    </ul>
+    <h3>Coordinates</h3>
+    <p>Z is up, like pofa. The image is a top-down map with north (+Y) at the top: pixel (col, row) sits at world x = col × m/px, y = (H − 1 − row) × m/px, z = height.</p>
+  </div>
+</div>
+<div id="toast"></div>
+<script>
+"use strict";
+// =====================================================================================
+//  Terrain Maker v1 (the pofa world painter)
+//  Paint the world map as a small picture with two layers on one grid:
+//    Height: one value per pixel, 0..1 (scaled by Max height), brighter = higher.
+//    Biome:  one palette index per pixel (water, sand, grass, ...).
+//  Every pixel is one terrain vertex. The game turns the grid into flat-shaded low-poly
+//  chunk meshes offline / at load, so the world is identical on every launch.
+//  A live WebGL 2 preview shows the result, and Export writes a C header for pofa.
+//
+//  Coordinates match the game: Z is up. The map is seen from above with north (+Y) at
+//  the top, so pixel (col, row) is world (col * mpp, (H - 1 - row) * mpp, height).
+// =====================================================================================
+
+const $ = (id) => document.getElementById(id);
+
+//----- Constants -----||
+// Bold, saturated low-poly colors. Index = the value stored in the biome grid, so only
+// ever add new biomes at the end (old maps keep their meaning).
+const BIOMES = [
+  { name: "Water",  rgb: [ 46, 110, 214] },
+  { name: "Sand",   rgb: [232, 208, 122] },
+  { name: "Grass",  rgb: [106, 190,  48] },
+  { name: "Forest", rgb: [ 40, 122,  52] },
+  { name: "Dirt",   rgb: [138,  92,  48] },
+  { name: "Rock",   rgb: [128, 130, 140] },
+  { name: "Snow",   rgb: [240, 244, 250] },
+];
+const B_WATER = 0, B_SAND = 1, B_GRASS = 2, B_FOREST = 3, B_DIRT = 4, B_ROCK = 5, B_SNOW = 6;
+
+const SUN = norm3([0.3, 0.5, 0.8]);    // same fixed sun as Vert Modeler
+const VERT_BYTES = 12;                 // pofa's packed Vert: int16x3 pos, int8x2 normal, rgba8
+const UNDO_MAX = 24;
+const SAVE_KEY = "pofa.terrainMaker.v1";
+const PREVIEW_MAX_CELLS = 256;         // the 3D preview skips pixels on bigger maps
+
+//----- Small Math -----||
+function clamp(x, a, b) { return x < a ? a : x > b ? b : x; }
+function norm3(v) { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0]/l, v[1]/l, v[2]/l]; }
+function smooth01(t) { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); }
+function fmtInt(n) { return Math.round(n).toLocaleString("en-US"); }
+function fmtBytes(b) {
+  if (b < 1024) return b + " B";
+  if (b < 1024 * 1024) return (b / 1024).toFixed(b < 10240 ? 1 : 0) + " KB";
+  return (b / 1048576).toFixed(b < 10485760 ? 2 : 1) + " MB";
+}
+function fmtM(m) { return (Math.abs(m - Math.round(m)) < 1e-6 ? Math.round(m) : m.toFixed(2)) + " m"; }
+
+//----- Matrix Math (column-major, like OpenGL) -----||
+function mat4Mul(a, b) {
+  const o = new Float32Array(16);
+  for (let c = 0; c < 4; c++)
+    for (let r = 0; r < 4; r++)
+      o[c*4 + r] = a[r]*b[c*4] + a[4 + r]*b[c*4 + 1] + a[8 + r]*b[c*4 + 2] + a[12 + r]*b[c*4 + 3];
+  return o;
+}
+function mat4Perspective(fovy, aspect, near, far) {
+  const f = 1 / Math.tan(fovy / 2), o = new Float32Array(16);
+  o[0] = f / aspect; o[5] = f;
+  o[10] = (far + near) / (near - far); o[11] = -1;
+  o[14] = 2 * far * near / (near - far);
+  return o;
+}
+// View matrix: rows R, U, -F (each with its -dot(eye) translation), stored column-major.
+function mat4LookAt(eye, target, up) {
+  const F = norm3([target[0]-eye[0], target[1]-eye[1], target[2]-eye[2]]);
+  const R = norm3([F[1]*up[2] - F[2]*up[1], F[2]*up[0] - F[0]*up[2], F[0]*up[1] - F[1]*up[0]]);
+  const U = [R[1]*F[2] - R[2]*F[1], R[2]*F[0] - R[0]*F[2], R[0]*F[1] - R[1]*F[0]];
+  const dot = (a, b) => a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+  return new Float32Array([
+    R[0], U[0], -F[0], 0,
+    R[1], U[1], -F[1], 0,
+    R[2], U[2], -F[2], 0,
+    -dot(R, eye), -dot(U, eye), dot(F, eye), 1,
+  ]);
+}
+
+//----- Seeded Noise -----||
+// Small, fast and deterministic: the same seed gives the same map on every device.
+function hash2(x, y, seed) {
+  let h = (x | 0) * 374761393 + (y | 0) * 668265263 + (seed | 0) * 144665;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+function valueNoise(x, y, seed) {
+  const xi = Math.floor(x), yi = Math.floor(y);
+  const tx = smooth01(x - xi), ty = smooth01(y - yi);
+  const a = hash2(xi, yi, seed), b = hash2(xi + 1, yi, seed);
+  const c = hash2(xi, yi + 1, seed), d = hash2(xi + 1, yi + 1, seed);
+  return (a + (b - a) * tx) + ((c + (d - c) * tx) - (a + (b - a) * tx)) * ty;
+}
+// Fractal sum: big shapes + smaller detail. Returns about 0..1.
+function fbm(x, y, seed, octaves, rough) {
+  let sum = 0, amp = 1, norm = 0, f = 1;
+  for (let o = 0; o < octaves; o++) {
+    sum += valueNoise(x * f, y * f, seed + o * 1013) * amp;
+    norm += amp; amp *= rough; f *= 2;
+  }
+  return sum / norm;
+}
+
+//----- App State -----||
+const S = {
+  name: "world",
+  size: 256,          // map is size x size pixels (= vertices)
+  mpp: 2,             // meters per pixel
+  maxH: 120,          // height 1.0 = this many meters
+  sea: 12,            // sea level in meters
+  chunk: 32,          // chunk edge in pixels (cells)
+  water: true,        // draw the water plane in 3D
+};
+let H = new Float32Array(S.size * S.size);   // heights 0..1, row-major, row 0 = north (top)
+let B = new Uint8Array(S.size * S.size);     // biome index per pixel
+let layer = "height";
+let tool = { height: "raise", biome: "paint" };
+let biomeSel = B_GRASS;
+let brushSize = 10, brushStr = 0.5;
+let showChunks = true;
+let mapDirty = true, meshDirty = true, viewDirty = true;
+
+//----- Undo + Autosave -----||
+// Each undo step is a full copy of both layers (1 MB + 256 KB at 512 x 512), which keeps
+// it simple and makes resize / generate / import undoable the same way as a stroke.
+const undoStack = [], redoStack = [];
+function snapshot() { return { size: S.size, H: H.slice(), B: B.slice() }; }
+function restore(s) {
+  const resized = s.size !== S.size;
+  S.size = s.size; H = s.H; B = s.B;
+  touched(resized);
+}
+function pushUndo() {
+  undoStack.push(snapshot());
+  if (undoStack.length > UNDO_MAX) undoStack.shift();
+  redoStack.length = 0;
+  updateUndoButtons();
+}
+function undo() { if (!undoStack.length) return; redoStack.push(snapshot()); restore(undoStack.pop()); updateUndoButtons(); }
+function redo() { if (!redoStack.length) return; undoStack.push(snapshot()); restore(redoStack.pop()); updateUndoButtons(); }
+function updateUndoButtons() { $("bUndo").disabled = !undoStack.length; $("bRedo").disabled = !redoStack.length; }
+
+// Something changed: redraw the map, rebuild the 3D mesh, save soon.
+function touched(resized) {
+  mapDirty = true; meshDirty = true; viewDirty = true;
+  if (resized) { fitMap(); fitCamera(); }
+  updateStats();
+  scheduleSave();
+}
+
+// Base64 helpers for typed arrays (localStorage and project files are text).
+function bytesToB64(u8) {
+  let s = "";
+  for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+function b64ToBytes(b64) {
+  const s = atob(b64), u8 = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) u8[i] = s.charCodeAt(i);
+  return u8;
+}
+function heightsToU16(h) { const o = new Uint16Array(h.length); for (let i = 0; i < h.length; i++) o[i] = Math.round(clamp(h[i], 0, 1) * 65535); return o; }
+
+function projectJSON() {
+  const h16 = heightsToU16(H);
+  return {
+    app: "pofa-terrain-maker", version: 1,
+    settings: { ...S },
+    height_u16_le_b64: bytesToB64(new Uint8Array(h16.buffer)),
+    biome_u8_b64: bytesToB64(B),
+    biomes: BIOMES.map((b) => ({ name: b.name, rgb: b.rgb })),
+  };
+}
+function loadProject(p) {
+  if (!p || p.app !== "pofa-terrain-maker") throw new Error("Not a Terrain Maker project");
+  const st = p.settings || {};
+  const size = st.size | 0;
+  if (!(size >= 8 && size <= 2048)) throw new Error("Bad map size");
+  const hb = b64ToBytes(p.height_u16_le_b64), bb = b64ToBytes(p.biome_u8_b64);
+  if (hb.length !== size * size * 2 || bb.length !== size * size) throw new Error("Data does not match the map size");
+  const h16 = new Uint16Array(hb.buffer, hb.byteOffset, size * size);
+  const h = new Float32Array(size * size);
+  for (let i = 0; i < h.length; i++) h[i] = h16[i] / 65535;
+  for (let i = 0; i < bb.length; i++) if (bb[i] >= BIOMES.length) bb[i] = B_GRASS;
+  Object.assign(S, {
+    name: typeof st.name === "string" ? st.name : S.name, size,
+    mpp: +st.mpp || S.mpp, maxH: +st.maxH || S.maxH,
+    sea: Number.isFinite(+st.sea) ? +st.sea : S.sea, chunk: +st.chunk || S.chunk,
+    water: st.water !== false,
+  });
+  H = h; B = bb;
+}
+
+let saveTimer = 0;
+function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 800); }
+function saveNow() {
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(projectJSON())); }
+  catch (e) { toast("Autosave failed (storage full?). Use File > Save project."); }
+}
+
+//----- Map Resize -----||
+// Bilinear for height (smooth), nearest for biome (indices can't be blended).
+function resampleTo(n) {
+  const o = S.size, nh = new Float32Array(n * n), nb = new Uint8Array(n * n);
+  const k = (o - 1) / Math.max(1, n - 1);
+  for (let r = 0; r < n; r++) {
+    for (let c = 0; c < n; c++) {
+      const x = c * k, y = r * k;
+      const x0 = Math.floor(x), y0 = Math.floor(y), x1 = Math.min(o - 1, x0 + 1), y1 = Math.min(o - 1, y0 + 1);
+      const tx = x - x0, ty = y - y0;
+      const a = H[y0*o + x0], b = H[y0*o + x1], cc = H[y1*o + x0], d = H[y1*o + x1];
+      nh[r*n + c] = (a + (b - a) * tx) * (1 - ty) + (cc + (d - cc) * tx) * ty;
+      nb[r*n + c] = B[Math.round(y) * o + Math.round(x)];
+    }
+  }
+  H = nh; B = nb; S.size = n;
+}
+
+//----- Brushes -----||
+// A stroke is a list of "stamps" along the pointer path. Each stamp touches the pixels
+// inside the brush circle with a soft falloff (1 in the middle, 0 at the rim).
+let stroke = null;    // { tool, last: [x, y], target }
+
+function stamp(cx, cy) {
+  const n = S.size, r = brushSize, t = stroke.tool;
+  const x0 = Math.max(0, Math.floor(cx - r)), x1 = Math.min(n - 1, Math.ceil(cx + r));
+  const y0 = Math.max(0, Math.floor(cy - r)), y1 = Math.min(n - 1, Math.ceil(cy + r));
+  if (x0 > x1 || y0 > y1) return;
+  const rr = Math.max(0.5, r);
+  // Smooth reads from a copy so the result doesn't depend on the loop direction.
+  let src = null, sw = 0;
+  if (t === "smooth") {
+    sw = x1 - x0 + 3;
+    src = new Float32Array(sw * (y1 - y0 + 3));
+    for (let y = y0 - 1; y <= y1 + 1; y++)
+      for (let x = x0 - 1; x <= x1 + 1; x++)
+        src[(y - y0 + 1) * sw + (x - x0 + 1)] = H[clamp(y, 0, n - 1) * n + clamp(x, 0, n - 1)];
+  }
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const d = Math.hypot(x - cx, y - cy);
+      if (d > rr) continue;
+      const i = y * n + x;
+      if (t === "paint") { B[i] = biomeSel; continue; }
+      const fall = 1 - smooth01(d / rr);          // soft edge
+      if (t === "raise" || t === "lower") {
+        // Strength 1 moves about 3% of max height per stamp at the centre.
+        const amt = brushStr * 0.03 * fall;
+        H[i] = clamp(H[i] + (t === "raise" ? amt : -amt), 0, 1);
+      } else if (t === "flatten") {
+        H[i] += (stroke.target - H[i]) * clamp(brushStr * fall * 0.6, 0, 1);
+      } else if (t === "smooth") {
+        const sx = x - x0 + 1, sy = y - y0 + 1;
+        let sum = 0;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) sum += src[(sy + dy) * sw + sx + dx];
+        H[i] += (sum / 9 - H[i]) * clamp(brushStr * fall, 0, 1);
+      }
+    }
+  }
+}
+
+function strokeBegin(x, y) {
+  const t = tool[layer];
+  const n = S.size, xi = clamp(Math.round(x), 0, n - 1), yi = clamp(Math.round(y), 0, n - 1);
+  if (t === "pick") { biomeSel = B[yi * n + xi]; updateSwatches(); toast(BIOMES[biomeSel].name); return; }
+  if (t === "fill") { pushUndo(); floodFill(xi, yi, biomeSel); touched(false); return; }
+  pushUndo();
+  stroke = { tool: t, last: [x, y], target: H[yi * n + xi] };
+  if (t === "flatten") toast("Flatten to " + fmtM(stroke.target * S.maxH));
+  stamp(x, y);
+  mapDirty = true; meshDirty = true;
+}
+function strokeMove(x, y) {
+  if (!stroke) return;
+  const [lx, ly] = stroke.last;
+  const dist = Math.hypot(x - lx, y - ly);
+  const step = Math.max(0.5, brushSize * 0.3);
+  if (dist < step) return;
+  const k = Math.floor(dist / step);
+  for (let s = 1; s <= k; s++) stamp(lx + (x - lx) * s / k, ly + (y - ly) * s / k);
+  stroke.last = [x, y];
+  mapDirty = true; meshDirty = true;
+}
+function strokeEnd() { if (!stroke) return; stroke = null; touched(false); }
+// A second finger landed mid-stroke: that was the start of a pinch, so undo the stroke.
+function strokeCancel() {
+  if (!stroke) return;
+  stroke = null;
+  const s = undoStack.pop(); if (s) restore(s);
+  updateUndoButtons();
+}
+
+//----- Fill -----||
+// 4-way flood fill of the connected area that has the same biome as the start pixel.
+function floodFill(x, y, val) {
+  const n = S.size, from = B[y * n + x];
+  if (from === val) return;
+  const stack = [y * n + x];
+  while (stack.length) {
+    const i = stack.pop();
+    if (B[i] !== from) continue;
+    B[i] = val;
+    const cx = i % n, cy = (i / n) | 0;
+    if (cx > 0) stack.push(i - 1);
+    if (cx < n - 1) stack.push(i + 1);
+    if (cy > 0) stack.push(i - n);
+    if (cy < n - 1) stack.push(i + n);
+  }
+}
+
+//----- Generate Base -----||
+function generate(seed, scale, rough, island, terraces) {
+  const n = S.size;
+  // Feature size is a fraction of the map, so the same seed looks alike at any map size.
+  const freq = 1 / (scale * n * 0.5);
+  const oct = 5;
+  for (let r = 0; r < n; r++) {
+    for (let c = 0; c < n; c++) {
+      let h = fbm(c * freq, r * freq, seed, oct, rough);
+      h = clamp((h - 0.25) / 0.5, 0, 1);                 // stretch to use the full range
+      if (island) {
+        const dx = c / (n - 1) * 2 - 1, dy = r / (n - 1) * 2 - 1;
+        const d = Math.min(1, Math.hypot(dx, dy) / 1.05);
+        h = h * (1 - d * d * d) * 0.9 + 0.1 * (1 - d) - 0.06;
+      }
+      h = clamp(h, 0, 1);
+      h = h * h * 0.65 + h * 0.35;                       // flatter lowlands, taller peaks
+      if (terraces > 0) {
+        const t = h * terraces, f = Math.floor(t), fr = t - f;
+        h = (f + smooth01((fr - 0.7) / 0.3)) / terraces;  // flat steps with short ramps
+      }
+      H[r * n + c] = h;
+    }
+  }
+}
+
+//----- Auto Biomes -----||
+function slopeDeg(c, r) {
+  const n = S.size, h = (x, y) => H[clamp(y, 0, n - 1) * n + clamp(x, 0, n - 1)] * S.maxH;
+  const dzdx = (h(c + 1, r) - h(c - 1, r)) / (2 * S.mpp);
+  const dzdy = (h(c, r - 1) - h(c, r + 1)) / (2 * S.mpp);
+  return Math.atan(Math.hypot(dzdx, dzdy)) * 180 / Math.PI;
+}
+function autoBiomes(beach, rockDeg, snowPct, forestPct) {
+  const n = S.size, seed = 9173;
+  for (let r = 0; r < n; r++) {
+    for (let c = 0; c < n; c++) {
+      const i = r * n + c, z = H[i] * S.maxH;
+      let b;
+      if (z < S.sea) b = B_WATER;
+      else if (z < S.sea + beach) b = B_SAND;
+      else if (H[i] * 100 >= snowPct) b = B_SNOW;
+      else if (slopeDeg(c, r) >= rockDeg) b = B_ROCK;
+      else {
+        // Clumpy forest patches from low-frequency noise, thinning out with height.
+        const f = fbm(c / 24, r / 24, seed, 3, 0.5);
+        const hiFade = (H[i] * 100) / Math.max(1, snowPct);
+        b = f < (forestPct / 100) * (1.15 - hiFade * 0.5) * 0.9 + 0.08 ? B_FOREST : B_GRASS;
+        if (b === B_GRASS && hiFade > 0.82) b = B_DIRT;
+      }
+      B[i] = b;
+    }
+  }
+}
+
+//----- 2D Map Drawing -----||
+// The map lives in an offscreen canvas, 1 canvas pixel per map pixel. On screen it is
+// drawn scaled with smoothing off, so every pixel stays a crisp square.
+const mapCv = $("map"), mctx = mapCv.getContext("2d");
+const off = document.createElement("canvas"), octx = off.getContext("2d");
+let mapView = { zoom: 1, ox: 0, oy: 0 };    // screen px per map px, and map origin on screen
+let hoverPx = null;                          // [x, y] in map pixels under the mouse
+
+let needFit = false;
+function fitMap() {
+  const w = mapCv.clientWidth, h = mapCv.clientHeight, n = S.size;
+  if (!w || !h) { needFit = true; return; }     // pane hidden right now: fit when shown
+  needFit = false;
+  const pad = 16, top = $("app").classList.contains("wide") ? 34 : 76, bot = 22;
+  const z = Math.max(0.05, Math.min((w - pad * 2) / n, (h - top - bot) / n));
+  mapView = { zoom: z, ox: (w - n * z) / 2, oy: top + (h - top - bot - n * z) / 2 };
+  viewDirty = true;
+}
+
+// Light from the fixed sun on the height field: makes the biome view read as terrain.
+function hillshade(c, r) {
+  const n = S.size, h = (x, y) => H[clamp(y, 0, n - 1) * n + clamp(x, 0, n - 1)] * S.maxH;
+  const dzdx = (h(c + 1, r) - h(c - 1, r)) / (2 * S.mpp);
+  const dzdy = (h(c, r - 1) - h(c, r + 1)) / (2 * S.mpp);
+  const l = Math.hypot(dzdx, dzdy, 1);
+  const d = (-dzdx * SUN[0] - dzdy * SUN[1] + SUN[2]) / l;
+  return 0.55 + 0.45 * Math.max(0, d) + 0.12;
+}
+
+function redrawOffscreen() {
+  const n = S.size;
+  if (off.width !== n) { off.width = n; off.height = n; }
+  const img = octx.createImageData(n, n), px = img.data;
+  const seaN = S.sea / S.maxH;
+  for (let r = 0; r < n; r++) {
+    for (let c = 0; c < n; c++) {
+      const i = r * n + c, o = i * 4, h = H[i];
+      let R, G, Bl;
+      if (layer === "height") {
+        const g = h * 255;
+        if (h < seaN) { R = g * 0.55; G = g * 0.7; Bl = g * 0.7 + 70; }   // below sea: blue tint
+        else { R = G = Bl = g; }
+      } else {
+        const col = BIOMES[B[i]].rgb, s = hillshade(c, r);
+        R = col[0] * s; G = col[1] * s; Bl = col[2] * s;
+      }
+      px[o] = R; px[o + 1] = G; px[o + 2] = Bl; px[o + 3] = 255;
+    }
+  }
+  octx.putImageData(img, 0, 0);
+}
+
+function drawMap() {
+  const dpr = window.devicePixelRatio || 1, w = mapCv.clientWidth, h = mapCv.clientHeight;
+  mctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  mctx.fillStyle = "#0d0e12"; mctx.fillRect(0, 0, w, h);
+  const { zoom: z, ox, oy } = mapView, n = S.size;
+  mctx.imageSmoothingEnabled = false;
+  mctx.drawImage(off, ox, oy, n * z, n * z);
+  mctx.strokeStyle = "#ffffff30"; mctx.lineWidth = 1;
+  mctx.strokeRect(ox - 0.5, oy - 0.5, n * z + 1, n * z + 1);
+
+  // Chunk grid: chunk k covers cells k*C .. k*C+C, so its lines sit on pixel centres.
+  if (showChunks) {
+    mctx.strokeStyle = "#ffffff55"; mctx.beginPath();
+    for (let k = 0; k * S.chunk < n; k++) {
+      const p = (k * S.chunk + 0.5) * z;
+      mctx.moveTo(ox + p, oy); mctx.lineTo(ox + p, oy + n * z);
+      mctx.moveTo(ox, oy + p); mctx.lineTo(ox + n * z, oy + p);
+    }
+    mctx.stroke();
+  }
+  // Brush outline under the mouse (fill / pick show a small crosshair instead).
+  if (hoverPx && !pinch) {
+    const sx = ox + (hoverPx[0] + 0.5) * z, sy = oy + (hoverPx[1] + 0.5) * z;
+    const t = tool[layer];
+    mctx.strokeStyle = "#fff"; mctx.lineWidth = 1.5; mctx.beginPath();
+    if (t === "fill" || t === "pick") { mctx.moveTo(sx - 8, sy); mctx.lineTo(sx + 8, sy); mctx.moveTo(sx, sy - 8); mctx.lineTo(sx, sy + 8); }
+    else mctx.arc(sx, sy, Math.max(2, brushSize * z), 0, Math.PI * 2);
+    mctx.stroke();
+  }
+}
+
+function screenToMap(sx, sy) { return [(sx - mapView.ox) / mapView.zoom - 0.5, (sy - mapView.oy) / mapView.zoom - 0.5]; }
+
+function updateHover() {
+  if (!hoverPx) { $("hover").textContent = ""; return; }
+  const n = S.size, c = Math.round(hoverPx[0]), r = Math.round(hoverPx[1]);
+  if (c < 0 || r < 0 || c >= n || r >= n) { $("hover").textContent = ""; return; }
+  const i = r * n + c;
+  $("hover").textContent = `px ${c},${r}  world ${fmtM(c * S.mpp)}, ${fmtM((n - 1 - r) * S.mpp)}  h ${(H[i] * S.maxH).toFixed(1)} m  ${BIOMES[B[i]].name}  slope ${slopeDeg(c, r).toFixed(0)}°`;
+}
+
+//----- 2D Map Input -----||
+// Pointer Events cover mouse, touch and pen. One finger paints; two fingers pan + zoom.
+const mapPointers = new Map();
+let pinch = null;    // { d, cx, cy } at the last move
+let panDrag = null;  // mouse right/middle drag
+
+function zoomMapAt(sx, sy, factor) {
+  const z = clamp(mapView.zoom * factor, 0.05, 64);
+  const k = z / mapView.zoom;
+  mapView.ox = sx - (sx - mapView.ox) * k; mapView.oy = sy - (sy - mapView.oy) * k; mapView.zoom = z;
+  viewDirty = true;
+}
+function localXY(e, el) { const b = el.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; }
+
+mapCv.addEventListener("contextmenu", (e) => e.preventDefault());
+mapCv.addEventListener("pointerdown", (e) => {
+  mapCv.setPointerCapture(e.pointerId);
+  const [sx, sy] = localXY(e, mapCv);
+  mapPointers.set(e.pointerId, [sx, sy]);
+  if (e.pointerType === "mouse" && e.button !== 0) { panDrag = [sx, sy]; return; }
+  if (mapPointers.size === 2) {
+    strokeCancel();
+    const [a, b] = [...mapPointers.values()];
+    pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), cx: (a[0] + b[0]) / 2, cy: (a[1] + b[1]) / 2 };
+    return;
+  }
+  if (mapPointers.size === 1) {
+    const [x, y] = screenToMap(sx, sy);
+    hoverPx = [x, y];
+    strokeBegin(x, y);
+  }
+});
+mapCv.addEventListener("pointermove", (e) => {
+  const [sx, sy] = localXY(e, mapCv);
+  if (mapPointers.has(e.pointerId)) mapPointers.set(e.pointerId, [sx, sy]);
+  if (panDrag) { mapView.ox += sx - panDrag[0]; mapView.oy += sy - panDrag[1]; panDrag = [sx, sy]; viewDirty = true; return; }
+  if (pinch && mapPointers.size >= 2) {
+    const [a, b] = [...mapPointers.values()];
+    const d = Math.hypot(a[0] - b[0], a[1] - b[1]), cx = (a[0] + b[0]) / 2, cy = (a[1] + b[1]) / 2;
+    mapView.ox += cx - pinch.cx; mapView.oy += cy - pinch.cy;
+    if (pinch.d > 4) zoomMapAt(cx, cy, d / pinch.d);
+    pinch = { d, cx, cy };
+    viewDirty = true;
+    return;
+  }
+  const [x, y] = screenToMap(sx, sy);
+  hoverPx = [x, y]; viewDirty = true;
+  strokeMove(x, y);
+  updateHover();
+});
+function mapPointerUp(e) {
+  mapPointers.delete(e.pointerId);
+  if (panDrag) { panDrag = null; return; }
+  if (pinch) { if (mapPointers.size < 2) pinch = null; return; }
+  strokeEnd();
+  if (e.pointerType !== "mouse") { hoverPx = null; updateHover(); }
+  viewDirty = true;
+}
+mapCv.addEventListener("pointerup", mapPointerUp);
+mapCv.addEventListener("pointercancel", (e) => { mapPointers.delete(e.pointerId); strokeCancel(); pinch = null; panDrag = null; });
+mapCv.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") { hoverPx = null; updateHover(); viewDirty = true; } });
+mapCv.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const [sx, sy] = localXY(e, mapCv);
+  zoomMapAt(sx, sy, Math.exp(-e.deltaY * 0.0015));
+}, { passive: false });
+
+//----- WebGL Setup -----||
+const glCv = $("gl");
+const gl = glCv.getContext("webgl2", { antialias: true });
+let prog = null, uMVP, uAlpha, uFlat, terrainVAO, terrainVBO, terrainCount = 0, waterVAO, waterVBO;
+
+function compile(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+  return s;
+}
+function makeProgram(vsSrc, fsSrc) {
+  const vs = compile(gl.VERTEX_SHADER, vsSrc), fs = compile(gl.FRAGMENT_SHADER, fsSrc);
+  const p = gl.createProgram();
+  gl.attachShader(p, vs); gl.attachShader(p, fs); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  gl.deleteShader(vs); gl.deleteShader(fs);
+  return p;
+}
+
+if (!gl) {
+  $("info").textContent = "WebGL 2 is not available in this browser, so there is no 3D preview. Painting and export still work.";
+} else {
+  // Flat shading without storing normals: the face normal comes from the screen-space
+  // derivatives of the world position, which are constant across a triangle.
+  prog = makeProgram(`#version 300 es
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec4 aColor;
+uniform mat4 uMVP;
+out vec3 vWorld;
+out vec4 vColor;
+void main() {
+  vWorld = aPos;
+  vColor = aColor;
+  gl_Position = uMVP * vec4(aPos, 1.0);
+}`, `#version 300 es
+precision highp float;
+in vec3 vWorld;
+in vec4 vColor;
+uniform float uAlpha;
+uniform bool uFlat;
+uniform vec3 uSun;
+out vec4 fragColor;
+void main() {
+  if (!uFlat) { fragColor = vec4(vColor.rgb, uAlpha); return; }
+  vec3 n = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
+  if (n.z < 0.0) n = -n;
+  float shade = 0.55 + 0.45 * max(0.0, dot(n, uSun));
+  fragColor = vec4(vColor.rgb * shade, uAlpha);
+}`);
+  uMVP = gl.getUniformLocation(prog, "uMVP");
+  uAlpha = gl.getUniformLocation(prog, "uAlpha");
+  uFlat = gl.getUniformLocation(prog, "uFlat");
+  gl.useProgram(prog);
+  gl.uniform3fv(gl.getUniformLocation(prog, "uSun"), SUN);
+
+  // Interleaved: pos float x3 (12 B) + color uint8 x4 normalized (4 B) = 16 B per vertex.
+  const setupVAO = () => {
+    const vao = gl.createVertexArray(), vbo = gl.createBuffer();
+    gl.bindVertexArray(vao); gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 16, 0); gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(1, 4, gl.UNSIGNED_BYTE, true, 16, 12); gl.enableVertexAttribArray(1);
+    gl.bindVertexArray(null);
+    return [vao, vbo];
+  };
+  [terrainVAO, terrainVBO] = setupVAO();
+  [waterVAO, waterVBO] = setupVAO();
+  gl.enable(gl.DEPTH_TEST);
+  gl.clearColor(0.53, 0.70, 0.86, 1);
+}
+
+//----- Terrain Mesh (preview) -----||
+// Same layout the game would build: per cell two triangles, SW-SE-NE and SW-NE-NW
+// (CCW seen from above), colored by the cell's NW pixel (col, row), the pixel whose biome
+// owns the cell in the export. Big maps skip pixels so phones stay smooth.
+let previewStep = 1;
+function buildMesh() {
+  if (!gl) return;
+  const n = S.size, step = Math.max(1, Math.ceil((n - 1) / PREVIEW_MAX_CELLS));
+  previewStep = step;
+  const cells = Math.floor((n - 1) / step);
+  const buf = new ArrayBuffer(cells * cells * 6 * 16);
+  const f = new Float32Array(buf), u = new Uint8Array(buf);
+  const P = (c, r) => [c * S.mpp, (n - 1 - r) * S.mpp, H[r * n + c] * S.maxH];
+  let v = 0;
+  const put = (p, col) => {
+    const o = v * 4; f[o] = p[0]; f[o + 1] = p[1]; f[o + 2] = p[2];
+    const ob = v * 16 + 12; u[ob] = col[0]; u[ob + 1] = col[1]; u[ob + 2] = col[2]; u[ob + 3] = 255;
+    v++;
+  };
+  for (let gr = 0; gr < cells; gr++) {
+    for (let gc = 0; gc < cells; gc++) {
+      const c0 = gc * step, c1 = c0 + step, r0 = gr * step, r1 = r0 + step;   // r0 = north row
+      const nw = P(c0, r0), ne = P(c1, r0), sw = P(c0, r1), se = P(c1, r1);
+      const col = BIOMES[B[r0 * n + c0]].rgb;
+      put(sw, col); put(se, col); put(ne, col);
+      put(sw, col); put(ne, col); put(nw, col);
+    }
+  }
+  gl.bindBuffer(gl.ARRAY_BUFFER, terrainVBO);
+  gl.bufferData(gl.ARRAY_BUFFER, buf, gl.STATIC_DRAW);
+  terrainCount = v;
+
+  // Water plane: one quad at sea level, a little bigger than the map.
+  const W = (n - 1) * S.mpp, m = W * 0.02, z = S.sea;
+  const wb = new ArrayBuffer(6 * 16), wf = new Float32Array(wb), wu = new Uint8Array(wb);
+  const quad = [[-m, -m], [W + m, -m], [W + m, W + m], [-m, -m], [W + m, W + m], [-m, W + m]];
+  quad.forEach((q, k) => { wf[k * 4] = q[0]; wf[k * 4 + 1] = q[1]; wf[k * 4 + 2] = z; wu[k * 16 + 12] = 40; wu[k * 16 + 13] = 105; wu[k * 16 + 14] = 220; wu[k * 16 + 15] = 255; });
+  gl.bindBuffer(gl.ARRAY_BUFFER, waterVBO);
+  gl.bufferData(gl.ARRAY_BUFFER, wb, gl.STATIC_DRAW);
+
+  $("glNote").textContent = (step > 1 ? `preview: 1 in ${step} pixels  ` : "") + `${fmtInt(terrainCount / 3)} triangles`;
+}
+
+//----- Orbit Camera -----||
+const cam = { yaw: -2.1, pitch: 0.75, dist: 600, target: [0, 0, 0] };
+function fitCamera() {
+  const W = (S.size - 1) * S.mpp;
+  cam.target = [W / 2, W / 2, S.sea];
+  cam.dist = W * 1.15;
+}
+function cameraMVP() {
+  const w = glCv.width, h = glCv.height;
+  const cp = Math.cos(cam.pitch);
+  const eye = [cam.target[0] + cam.dist * cp * Math.cos(cam.yaw), cam.target[1] + cam.dist * cp * Math.sin(cam.yaw), cam.target[2] + cam.dist * Math.sin(cam.pitch)];
+  const proj = mat4Perspective(50 * Math.PI / 180, w / Math.max(1, h), cam.dist * 0.01, cam.dist * 10 + S.maxH * 4);
+  return mat4Mul(proj, mat4LookAt(eye, cam.target, [0, 0, 1]));
+}
+// Pan in the ground plane, along the camera's right and forward directions.
+function panCamera(dx, dy) {
+  const k = cam.dist * 0.0018;
+  const rx = -Math.sin(cam.yaw), ry = Math.cos(cam.yaw);      // camera right, flattened
+  const fx = -Math.cos(cam.yaw), fy = -Math.sin(cam.yaw);     // camera forward, flattened
+  cam.target[0] += (-dx * rx + dy * fx) * k;
+  cam.target[1] += (-dx * ry + dy * fy) * k;
+}
+
+//----- 3D Input -----||
+const glPointers = new Map();
+let glPinch = null, glDrag = null;
+glCv.addEventListener("contextmenu", (e) => e.preventDefault());
+glCv.addEventListener("pointerdown", (e) => {
+  glCv.setPointerCapture(e.pointerId);
+  const p = localXY(e, glCv);
+  glPointers.set(e.pointerId, p);
+  if (glPointers.size === 2) {
+    const [a, b] = [...glPointers.values()];
+    glPinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), cx: (a[0] + b[0]) / 2, cy: (a[1] + b[1]) / 2 };
+    glDrag = null;
+  } else if (glPointers.size === 1) {
+    glDrag = { p, pan: e.pointerType === "mouse" && (e.button === 2 || e.button === 1 || e.shiftKey) };
+  }
+});
+glCv.addEventListener("pointermove", (e) => {
+  if (!glPointers.has(e.pointerId)) return;
+  const p = localXY(e, glCv);
+  glPointers.set(e.pointerId, p);
+  if (glPinch && glPointers.size >= 2) {
+    const [a, b] = [...glPointers.values()];
+    const d = Math.hypot(a[0] - b[0], a[1] - b[1]), cx = (a[0] + b[0]) / 2, cy = (a[1] + b[1]) / 2;
+    if (glPinch.d > 4 && d > 4) cam.dist = clamp(cam.dist * glPinch.d / d, 5, 1e5);
+    panCamera(cx - glPinch.cx, cy - glPinch.cy);
+    glPinch = { d, cx, cy };
+  } else if (glDrag) {
+    const dx = p[0] - glDrag.p[0], dy = p[1] - glDrag.p[1];
+    if (glDrag.pan) panCamera(dx, dy);
+    else { cam.yaw -= dx * 0.008; cam.pitch = clamp(cam.pitch + dy * 0.008, 0.05, 1.55); }
+    glDrag.p = p;
+  }
+});
+function glUp(e) {
+  glPointers.delete(e.pointerId);
+  if (glPointers.size < 2) glPinch = null;
+  if (glPointers.size === 0) glDrag = null;
+  else if (glPointers.size === 1) glDrag = { p: [...glPointers.values()][0], pan: false };
+}
+glCv.addEventListener("pointerup", glUp);
+glCv.addEventListener("pointercancel", glUp);
+glCv.addEventListener("wheel", (e) => { e.preventDefault(); cam.dist = clamp(cam.dist * Math.exp(e.deltaY * 0.0015), 5, 1e5); }, { passive: false });
+
+//----- Stats -----||
+// What the game pays if it builds flat-shaded, unindexed chunk meshes with the 12-byte
+// Vert: 2 triangles per cell, 3 verts each (no sharing, because each face has its own
+// normal). A chunk of C x C cells = 6*C*C verts.
+function statsData() {
+  const n = S.size, cells = n - 1, C = S.chunk;
+  const chunksPerSide = Math.ceil(cells / C);
+  const vChunk = C * C * 6;
+  const vTotal = cells * cells * 6;
+  return {
+    n, cells, C, chunksPerSide, chunks: chunksPerSide * chunksPerSide,
+    worldM: cells * S.mpp, chunkM: C * S.mpp,
+    vChunk, tChunk: C * C * 2, bChunk: vChunk * VERT_BYTES,
+    vTotal, tTotal: cells * cells * 2, bTotal: vTotal * VERT_BYTES,
+    data16: n * n * 3, data8: n * n * 2,
+  };
+}
+function updateStats() {
+  const d = statsData();
+  $("stats").textContent =
+    `${d.n}×${d.n} px · ${S.mpp} m/px · world ${fmtM(d.worldM)} · ${d.chunksPerSide}×${d.chunksPerSide} chunks of ${fmtM(d.chunkM)}\n` +
+    `chunk ${fmtInt(d.tChunk)} tris · ${fmtInt(d.vChunk)} verts · ${fmtBytes(d.bChunk)}   all ${fmtBytes(d.bTotal)}`;
+  $("mapStats").textContent =
+    `World:   ${fmtM(d.worldM)} × ${fmtM(d.worldM)}, height 0..${fmtM(S.maxH)}, sea ${fmtM(S.sea)}\n` +
+    `Grid:    ${d.n} × ${d.n} vertices = ${fmtInt(d.cells)} × ${fmtInt(d.cells)} cells\n` +
+    `Chunks:  ${d.chunksPerSide} × ${d.chunksPerSide} = ${d.chunks}, each ${d.C} × ${d.C} cells (${fmtM(d.chunkM)})\n` +
+    `Per chunk (flat-shaded, 12-byte Vert, no indices):\n` +
+    `         ${fmtInt(d.tChunk)} triangles, ${fmtInt(d.vChunk)} verts, ${fmtBytes(d.bChunk)}\n` +
+    `Whole world as meshes: ${fmtInt(d.tTotal)} triangles, ${fmtBytes(d.bTotal)}\n` +
+    `Exported grid data: ${fmtBytes(d.data16)} (uint16 height) / ${fmtBytes(d.data8)} (uint8)`;
+}
+
+//----- Save / Load (PNG + JSON) -----||
+function download(name, data, type) {
+  const blob = data instanceof Blob ? data : new Blob([data], { type });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+function layerPNG(which) {
+  const n = S.size, cv = document.createElement("canvas");
+  cv.width = n; cv.height = n;
+  const cx = cv.getContext("2d"), img = cx.createImageData(n, n), px = img.data;
+  for (let i = 0; i < n * n; i++) {
+    const col = which === "height" ? [Math.round(H[i] * 255), Math.round(H[i] * 255), Math.round(H[i] * 255)] : BIOMES[B[i]].rgb;
+    px[i * 4] = col[0]; px[i * 4 + 1] = col[1]; px[i * 4 + 2] = col[2]; px[i * 4 + 3] = 255;
+  }
+  cx.putImageData(img, 0, 0);
+  cv.toBlob((b) => download(`${cIdent(S.name)}_${which}.png`, b), "image/png");
+}
+// Draw an image file into an n x n canvas and return its pixels.
+function imagePixels(file, smooth) {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      const n = S.size, cv = document.createElement("canvas"); cv.width = n; cv.height = n;
+      const cx = cv.getContext("2d"); cx.imageSmoothingEnabled = smooth;
+      cx.drawImage(img, 0, 0, n, n); URL.revokeObjectURL(url);
+      res(cx.getImageData(0, 0, n, n).data);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error("Could not read that image")); };
+    img.src = url;
+  });
+}
+function nearestBiome(r, g, b) {
+  let best = 0, bd = Infinity;
+  BIOMES.forEach((bi, k) => { const d = (r - bi.rgb[0]) ** 2 + (g - bi.rgb[1]) ** 2 + (b - bi.rgb[2]) ** 2; if (d < bd) { bd = d; best = k; } });
+  return best;
+}
+let fileAction = null;
+function pickFile(accept, action) { fileAction = action; const fi = $("fileIn"); fi.value = ""; fi.accept = accept; fi.click(); }
+$("fileIn").addEventListener("change", async (e) => {
+  const file = e.target.files[0]; if (!file || !fileAction) return;
+  try {
+    if (fileAction === "project") {
+      const p = JSON.parse(await file.text());
+      pushUndo(); loadProject(p); syncSettingsUI(); touched(true);
+      toast("Project loaded");
+    } else if (fileAction === "height") {
+      const px = await imagePixels(file, true);
+      pushUndo();
+      for (let i = 0; i < H.length; i++) H[i] = (px[i * 4] * 0.299 + px[i * 4 + 1] * 0.587 + px[i * 4 + 2] * 0.114) / 255;
+      touched(false); toast("Height imported");
+    } else if (fileAction === "biome") {
+      const px = await imagePixels(file, false);
+      pushUndo();
+      for (let i = 0; i < B.length; i++) B[i] = nearestBiome(px[i * 4], px[i * 4 + 1], px[i * 4 + 2]);
+      touched(false); toast("Biomes imported");
+    }
+    closeModals();
+  } catch (err) { toast(err.message || String(err)); }
+});
+
+//----- Export for pofa -----||
+// Turn any text into a valid C identifier: letters/digits/underscore only, no leading digit.
+function cIdent(s) {
+  let id = String(s).trim().replace(/[^A-Za-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
+  if (!id) id = "world";
+  if (/^[0-9]/.test(id)) id = "_" + id;
+  return id;
+}
+const ff = (x) => { const s = String(+x.toPrecision(9)); return (s.includes(".") || s.includes("e") ? s : s + ".0") + "f"; };
+
+function buildExport(bits) {
+  const name = cIdent(S.name), n = S.size, d = statsData();
+  const maxQ = bits === 16 ? 65535 : 255, htype = bits === 16 ? "uint16_t" : "uint8_t";
+  const dataBytes = n * n * (bits / 8) + n * n;
+  const L = [];
+  L.push(`#pragma once`);
+  L.push(`#include <stdint.h>`);
+  L.push(`// ${name}: ${n} x ${n} terrain grid, ${fmtInt(dataBytes)} bytes of data (exported from Terrain Maker v1)`);
+  L.push(`// World ${fmtM(d.worldM)} x ${fmtM(d.worldM)}, ${d.chunksPerSide} x ${d.chunksPerSide} chunks of ${d.C} x ${d.C} cells.`);
+  L.push(``);
+  L.push(`//----- Grid -----||`);
+  L.push(`// One sample per map pixel, and each sample is one terrain vertex. Z is up.`);
+  L.push(`// Row-major: i = row * ${name}_w + col. Row 0 is the NORTH edge (top of the image).`);
+  L.push(`//   world x = col * ${name}_meters_per_px`);
+  L.push(`//   world y = (${name}_h - 1 - row) * ${name}_meters_per_px`);
+  L.push(`//   world z = ${name}_height[i] * ${name}_height_scale            (meters, 0..${fmtM(S.maxH)})`);
+  L.push(`//----- Cells + Triangles -----||`);
+  L.push(`// Cell (col, row) is the square between samples (col, row) and (col+1, row+1), so`);
+  L.push(`// there are (w-1) x (h-1) cells. Its biome is ${name}_biome[row * w + col] (its NW sample).`);
+  L.push(`// Two triangles per cell, CCW seen from above (+Z), split on the SW-NE diagonal:`);
+  L.push(`//   SW (col, row+1), SE (col+1, row+1), NE (col+1, row)`);
+  L.push(`//   SW (col, row+1), NE (col+1, row),   NW (col, row)`);
+  L.push(`// Flat shaded: each triangle gets its own face normal, so 3 verts per triangle.`);
+  L.push(`//----- Chunks -----||`);
+  L.push(`// Chunk (cx, cy) owns cells col in [cx*C, cx*C + C) and row in [cy*C, cy*C + C),`);
+  L.push(`// clipped to the map (C = ${name}_chunk_cells, cy = 0 is the north strip). It reads samples`);
+  L.push(`// up to col cx*C + C, the edge it shares with the next chunk, so neighbours use the`);
+  L.push(`// same edge heights and never crack. Full chunk: ${fmtInt(d.tChunk)} triangles, ${fmtInt(d.vChunk)} verts,`);
+  L.push(`// ${fmtBytes(d.bChunk)} as 12-byte Verts. Whole world: ${fmtInt(d.tTotal)} triangles, ${fmtBytes(d.bTotal)}.`);
+  L.push(``);
+  L.push(`static const int   ${name}_w = ${n};`);
+  L.push(`static const int   ${name}_h = ${n};`);
+  L.push(`static const float ${name}_meters_per_px = ${ff(S.mpp)};`);
+  L.push(`static const float ${name}_max_height = ${ff(S.maxH)};`);
+  L.push(`static const float ${name}_height_scale = ${ff(S.maxH)} / ${maxQ}.0f;   // meters per height step`);
+  L.push(`static const float ${name}_sea_level = ${ff(S.sea)};`);
+  L.push(`static const int   ${name}_chunk_cells = ${d.C};`);
+  L.push(`static const int   ${name}_chunks_x = ${d.chunksPerSide};`);
+  L.push(`static const int   ${name}_chunks_y = ${d.chunksPerSide};`);
+  L.push(``);
+  L.push(`//----- Biomes -----||`);
+  L.push(`// Index stored in ${name}_biome. Shared by every map, so new biomes only go at the end.`);
+  L.push(`#ifndef TERRAIN_BIOMES_DEFINED`);
+  L.push(`#define TERRAIN_BIOMES_DEFINED`);
+  L.push(`enum TerrainBiome : uint8_t {`);
+  BIOMES.forEach((b, k) => L.push(`    BIOME_${b.name.toUpperCase()} = ${k},`));
+  L.push(`    BIOME_COUNT = ${BIOMES.length}`);
+  L.push(`};`);
+  L.push(`// rgb 0..255 per biome (bold flat colors; light it in the shader or bake it per face)`);
+  L.push(`static const uint8_t terrain_biome_rgb[BIOME_COUNT][3] = {`);
+  BIOMES.forEach((b) => L.push(`    { ${b.rgb.map((v) => String(v).padStart(3)).join(", ")} },   // ${b.name}`));
+  L.push(`};`);
+  L.push(`#endif`);
+  L.push(``);
+  L.push(`//----- Data -----||`);
+  L.push(`static const ${htype} ${name}_height[${n} * ${n}] = {`);
+  const per = bits === 16 ? 16 : 24;
+  for (let r = 0; r < n; r++) {
+    if (r % 32 === 0) L.push(`    // row ${r}`);
+    for (let c = 0; c < n; c += per) {
+      const vals = [];
+      for (let k = c; k < Math.min(n, c + per); k++) vals.push(Math.round(clamp(H[r * n + k], 0, 1) * maxQ));
+      L.push(`    ${vals.join(",")},`);
+    }
+  }
+  L.push(`};`);
+  L.push(`static const uint8_t ${name}_biome[${n} * ${n}] = {`);
+  for (let r = 0; r < n; r++) {
+    if (r % 32 === 0) L.push(`    // row ${r}`);
+    for (let c = 0; c < n; c += 32) {
+      const vals = [];
+      for (let k = c; k < Math.min(n, c + 32); k++) vals.push(B[r * n + k]);
+      L.push(`    ${vals.join(",")},`);
+    }
+  }
+  L.push(`};`);
+  L.push(``);
+  return L.join("\n");
+}
+
+// Clipboard API needs a secure context (https or localhost); file:// may refuse,
+// so fall back to the old select-and-execCommand trick on a hidden textarea.
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return true; }
+  } catch (e) { /* fall through */ }
+  const ta = document.createElement("textarea");
+  ta.value = text; ta.setAttribute("readonly", "");
+  ta.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0";
+  document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, text.length);
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+  ta.remove();
+  return ok;
+}
+
+let toastTimer = 0;
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2200);
+}
+
+let exportCache = "";
+function refreshExport() {
+  const bits = +$("eBits").value;
+  exportCache = buildExport(bits);
+  // A 512 x 512 map is ~1.5 MB of text; phones choke showing that, so show the top only.
+  const PREVIEW = 200000;
+  $("exportText").value = exportCache.length > PREVIEW ? exportCache.slice(0, exportCache.lastIndexOf("\n", PREVIEW)) + "\n    // ... (preview cut here; Copy and Save .h include everything)\n" : exportCache;
+  $("eNote").textContent = `${cIdent(S.name)}.h, ${fmtBytes(exportCache.length)} of text. Data in the game: ${fmtBytes(S.size * S.size * (bits / 8 + 1))}. The game builds the chunk meshes from these two grids.`;
+}
+
+//----- UI Wiring -----||
+function setLayer(l) {
+  layer = l;
+  document.querySelectorAll("#toolbar button.layer").forEach((b) => b.classList.toggle("on", b.dataset.layer === l));
+  document.querySelectorAll("#toolbar button[data-tool]").forEach((b) => {
+    b.classList.toggle("hide", b.dataset.for !== l);
+    b.classList.toggle("on", b.dataset.tool === tool[l]);
+  });
+  $("swatches").classList.toggle("show", l === "biome");
+  $("strengthLbl").classList.toggle("hide", l === "biome");
+  mapDirty = true; viewDirty = true;
+}
+function setTool(t) { tool[layer] = t; setLayer(layer); }
+document.querySelectorAll("#toolbar button.layer").forEach((b) => b.addEventListener("click", () => setLayer(b.dataset.layer)));
+document.querySelectorAll("#toolbar button[data-tool]").forEach((b) => b.addEventListener("click", () => setTool(b.dataset.tool)));
+
+function buildSwatches() {
+  const box = $("swatches"); box.innerHTML = "";
+  BIOMES.forEach((b, k) => {
+    const el = document.createElement("button");
+    el.className = "swatch"; el.style.background = `rgb(${b.rgb.join(",")})`;
+    el.textContent = b.name; el.title = `${k + 1}: ${b.name}`;
+    if (k === B_WATER || k === B_FOREST || k === B_DIRT) el.style.color = "#fffc";
+    el.addEventListener("click", () => { biomeSel = k; updateSwatches(); if (tool.biome === "pick") setTool("paint"); });
+    box.appendChild(el);
+  });
+  updateSwatches();
+}
+function updateSwatches() { [...$("swatches").children].forEach((el, k) => el.classList.toggle("on", k === biomeSel)); }
+
+function syncSliders() {
+  $("brushSize").value = brushSize; $("brushSizeV").textContent = brushSize + " px";
+  $("brushStr").value = brushStr; $("brushStrV").textContent = Math.round(brushStr * 100) + "%";
+}
+$("brushSize").addEventListener("input", (e) => { brushSize = +e.target.value; syncSliders(); viewDirty = true; });
+$("brushStr").addEventListener("input", (e) => { brushStr = +e.target.value; syncSliders(); });
+
+// Tabs (phones): Map or 3D.
+function showTab(t) {
+  document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
+  $("mapPane").classList.toggle("show", t === "map");
+  $("glPane").classList.toggle("show", t === "3d");
+  onResize();
+}
+document.querySelectorAll("#tabs button").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
+
+// Modals
+function closeModals() { document.querySelectorAll(".modal").forEach((m) => m.classList.remove("show")); }
+function openModal(id) { closeModals(); $(id).classList.add("show"); }
+
+function syncSettingsUI() {
+  $("setName").value = S.name; $("setSize").value = String(S.size); $("setMpp").value = S.mpp;
+  $("setMaxH").value = S.maxH; $("setSea").value = S.sea; $("setChunk").value = String(S.chunk);
+  $("setWater").checked = S.water;
+  updateStats();
+}
+$("bMapSet").addEventListener("click", () => { syncSettingsUI(); openModal("mapModal"); });
+$("mmClose").addEventListener("click", closeModals);
+$("setName").addEventListener("input", (e) => { S.name = e.target.value; scheduleSave(); });
+$("setSize").addEventListener("change", (e) => {
+  const n = +e.target.value; if (n === S.size) return;
+  pushUndo(); resampleTo(n); touched(true);
+  brushSize = clamp(Math.round(brushSize * 1), 1, 64); syncSliders();
+});
+const numSetting = (id, key, lo, hi) => $(id).addEventListener("change", (e) => {
+  const v = parseFloat(e.target.value);
+  if (!Number.isFinite(v)) { e.target.value = S[key]; return; }
+  S[key] = clamp(v, lo, hi); e.target.value = S[key];
+  touched(key === "mpp");
+});
+numSetting("setMpp", "mpp", 0.25, 64);
+numSetting("setMaxH", "maxH", 1, 4000);
+numSetting("setSea", "sea", 0, 4000);
+$("setChunk").addEventListener("change", (e) => { S.chunk = +e.target.value; touched(false); });
+$("setWater").addEventListener("change", (e) => { S.water = e.target.checked; scheduleSave(); });
+
+$("bGen").addEventListener("click", () => { if (!$("genSeed").value) $("genSeed").value = 1; openModal("genModal"); });
+$("gmClose").addEventListener("click", closeModals);
+$("genRand").addEventListener("click", () => { $("genSeed").value = Math.floor(Math.random() * 100000); });
+$("genGo").addEventListener("click", () => {
+  pushUndo();
+  generate(+$("genSeed").value | 0, +$("genScale").value, +$("genRough").value, $("genIsland").checked, +$("genTerr").value | 0);
+  if ($("genAuto").checked) autoFromUI();
+  touched(false); closeModals(); toast("Generated (Undo to go back)");
+});
+
+function autoFromUI() { autoBiomes(+$("autoBeach").value || 0, +$("autoRock").value || 35, +$("autoSnow").value || 78, +$("autoForest").value || 0); }
+$("bAuto").addEventListener("click", () => openModal("autoModal"));
+$("amClose").addEventListener("click", closeModals);
+$("autoGo").addEventListener("click", () => { pushUndo(); autoFromUI(); touched(false); closeModals(); setLayer("biome"); toast("Biomes suggested (Undo to go back)"); });
+
+$("bFile").addEventListener("click", () => openModal("fileModal"));
+$("fmClose").addEventListener("click", closeModals);
+$("fSave").addEventListener("click", () => download(`${cIdent(S.name)}.terrain.json`, JSON.stringify(projectJSON()), "application/json"));
+$("fLoad").addEventListener("click", () => pickFile(".json,application/json", "project"));
+$("fPngH").addEventListener("click", () => layerPNG("height"));
+$("fPngB").addEventListener("click", () => layerPNG("biome"));
+$("fImpH").addEventListener("click", () => pickFile("image/*", "height"));
+$("fImpB").addEventListener("click", () => pickFile("image/*", "biome"));
+$("fNew").addEventListener("click", () => {
+  pushUndo();
+  H.fill(Math.min(1, (S.sea + 4) / S.maxH)); B.fill(B_GRASS);
+  touched(false); closeModals(); toast("New flat map (Undo to go back)");
+});
+
+$("bExport").addEventListener("click", () => { refreshExport(); openModal("exportModal"); });
+$("eBits").addEventListener("change", refreshExport);
+$("eClose").addEventListener("click", closeModals);
+$("eCopy").addEventListener("click", async () => toast((await copyText(exportCache)) ? "Copied to clipboard" : "Copy failed: use Save .h"));
+$("eSave").addEventListener("click", () => download(`${cIdent(S.name)}.h`, exportCache, "text/plain"));
+
+$("bHelp").addEventListener("click", () => openModal("helpModal"));
+$("hmClose").addEventListener("click", () => { closeModals(); localStorage.setItem(SAVE_KEY + ".helped", "1"); });
+
+$("bUndo").addEventListener("click", undo);
+$("bRedo").addEventListener("click", redo);
+$("bGrid").addEventListener("click", () => { showChunks = !showChunks; $("bGrid").classList.toggle("on", showChunks); viewDirty = true; });
+
+window.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
+  const k = e.key.toLowerCase();
+  if ((e.ctrlKey || e.metaKey) && k === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+  else if ((e.ctrlKey || e.metaKey) && k === "y") { e.preventDefault(); redo(); }
+  else if (k === "[") { brushSize = clamp(brushSize - 1, 1, 64); syncSliders(); viewDirty = true; }
+  else if (k === "]") { brushSize = clamp(brushSize + 1, 1, 64); syncSliders(); viewDirty = true; }
+  else if (k >= "1" && k <= String(BIOMES.length)) { biomeSel = +k - 1; updateSwatches(); }
+  else if (k === "escape") closeModals();
+});
+
+//----- Resize (handles devicePixelRatio) -----||
+let wasWide = null;
+function onResize() {
+  const wide = window.innerWidth >= 900 && window.innerWidth > window.innerHeight * 1.1;
+  $("app").classList.toggle("wide", wide);
+  const dpr = window.devicePixelRatio || 1;
+  for (const cv of [mapCv, glCv]) {
+    const w = Math.max(1, Math.round(cv.clientWidth * dpr)), h = Math.max(1, Math.round(cv.clientHeight * dpr));
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  }
+  if (wide !== wasWide || needFit) { wasWide = wide; fitMap(); }
+  viewDirty = true; glKey = "";
+}
+window.addEventListener("resize", () => { onResize(); fitMap(); });
+// The panes also change size without a window resize (the biome swatches row appears),
+// so watch them directly and keep the canvas backing stores matched.
+if (window.ResizeObserver) new ResizeObserver(() => onResize()).observe($("view"));
+
+//----- Draw Loop -----||
+let lastBuild = 0, glKey = "";
+function glVisible() { return $("app").classList.contains("wide") || $("glPane").classList.contains("show"); }
+function mapVisible() { return $("app").classList.contains("wide") || $("mapPane").classList.contains("show"); }
+
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (mapVisible()) {
+    if (mapDirty) { redrawOffscreen(); mapDirty = false; viewDirty = true; if (!stroke) updateHover(); }
+    if (viewDirty) { drawMap(); viewDirty = false; }
+  }
+  if (gl && glVisible()) {
+    // While painting, rebuild the preview mesh a few times a second, not every frame.
+    let rebuilt = false;
+    if (meshDirty && (!stroke || now - lastBuild > 250)) { buildMesh(); meshDirty = false; lastBuild = now; rebuilt = true; }
+    const key = [cam.yaw, cam.pitch, cam.dist, ...cam.target, glCv.width, glCv.height, S.water].join(",");
+    if (rebuilt || key !== glKey) { glKey = key; drawGL(); }
+  }
+}
+function drawGL() {
+  gl.viewport(0, 0, glCv.width, glCv.height);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.useProgram(prog);
+  gl.uniformMatrix4fv(uMVP, false, cameraMVP());
+  gl.uniform1i(uFlat, 1); gl.uniform1f(uAlpha, 1);
+  gl.bindVertexArray(terrainVAO);
+  gl.drawArrays(gl.TRIANGLES, 0, terrainCount);
+  if (S.water) {
+    // See-through water drawn last; no depth writes so it never hides the seabed.
+    gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false);
+    gl.uniform1i(uFlat, 0); gl.uniform1f(uAlpha, 0.55);
+    gl.bindVertexArray(waterVAO);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    gl.depthMask(true); gl.disable(gl.BLEND);
+  }
+  gl.bindVertexArray(null);
+}
+
+//----- Start -----||
+(function start() {
+  let loaded = false;
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (raw) { loadProject(JSON.parse(raw)); loaded = true; }
+  } catch (e) { console.warn("autosave ignored:", e); }
+  if (!loaded) {
+    // First visit: a generated island so there is something to look at right away.
+    H = new Float32Array(S.size * S.size); B = new Uint8Array(S.size * S.size);
+    generate(1, 0.45, 0.45, true, 0);
+    autoBiomes(2, 40, 78, 40);
+  }
+  buildSwatches(); syncSliders(); syncSettingsUI(); setLayer("height");
+  $("bGrid").classList.toggle("on", showChunks);
+  updateUndoButtons();
+  onResize(); fitMap(); fitCamera(); updateStats();
+  if (!localStorage.getItem(SAVE_KEY + ".helped")) openModal("helpModal");
+  if (!loaded) scheduleSave();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
