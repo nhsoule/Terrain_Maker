@@ -67,7 +67,7 @@
   .sliders label { flex: 1; display: flex; align-items: center; gap: 6px; font-size: 12px; color: #b9bccb; min-width: 0; }
   .sliders label b { font: 12px ui-monospace, Menlo, Consolas, monospace; color: #e8e8ee; min-width: 3.2em; text-align: right; font-weight: 400; }
   input[type=range] { flex: 1; min-width: 0; height: 28px; accent-color: #e0b43a; }
-  #swatches { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; }
+  #swatches { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
   .swatch { height: 32px; border-radius: 8px; border: 2px solid #0000; padding: 0; touch-action: manipulation;
             font: 600 10px system-ui, sans-serif; color: #000a; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 2px; }
   .swatch.on { border-color: #fff; box-shadow: 0 0 0 2px #000 inset; }
@@ -251,7 +251,7 @@
 <div id="autoModal" class="modal">
   <div class="card">
     <div class="head"><span>Auto biome</span><button id="amClose" class="alt">Cancel</button></div>
-    <div class="note">Re-colors every pixel from its height and slope, keeping its brightness: Ocean below sea level, Desert sand on the shore, Swamp on some low flat land near the sea, Rock on steep slopes, Snow up high, and Forest, Fall forest (higher up) and Plains in between. Lakes, rivers and ponds are yours to paint (this replaces any already painted). Undo brings it back; paint over it after.</div>
+    <div class="note">Re-colors every pixel from its height and slope, keeping its brightness: Ocean below sea level, Desert sand on the shore, Swamp on some low flat land near the sea, Rock on steep slopes, Snow up high, and Forest and Plains in between. Lakes, rivers and ponds are yours to paint (this replaces any already painted). Undo brings it back; paint over it after.</div>
     <label><span>Beach height (m)</span><input id="autoBeach" type="number" min="0" step="0.5" value="2" inputmode="decimal"></label>
     <label><span>Rock slope (°)</span><input id="autoRock" type="number" min="5" max="85" step="1" value="40" inputmode="decimal"></label>
     <label><span>Snow above (% of max)</span><input id="autoSnow" type="number" min="0" max="100" step="1" value="78" inputmode="decimal"></label>
@@ -298,7 +298,7 @@
       <li><b>Brightness = height.</b> The biome's full key color is Max height. Darker shades of that color are lower, down to <b>30% brightness at 0 m</b>, never black.</li>
       <li>Grey and white are <b>Rock</b>; <b>Snow</b> is the icy blue-white. Pure black (no hue) counts as Ocean at 0 m.</li>
     </ul>
-    <p>11 biomes (id: name): 0 Ocean, 1 Lake, 2 River, 3 Pond, 4 Swamp, 5 Desert, 6 Snow, 7 Fall (autumn forest), 8 Plains (grassy), 9 Rock, 10 Forest. The ids never change, so a game can rely on them.</p>
+    <p>10 biomes (id: name): 0 Ocean, 1 Lake, 2 River, 3 Pond, 4 Swamp, 5 Desert, 6 Snow, 7 Plains (grassy), 8 Rock, 9 Forest. Keys 1-9 and 0 pick them in this order.</p>
     <p>The 30% floor is there so dark, low pixels still show their hue: deep water is dark blue and low forest is dark green, not black. It costs a little precision: there are still about 250 to 530 height steps per biome (0.5 m steps at 120 m Max height).</p>
     <h3>Water</h3>
     <p>Ocean, Lake, River, Pond and Swamp are <b>water biomes</b>. Like every biome their brightness is the height of the <b>bed</b> (sea floor, lake bottom, river bed). The water surface on top is worked out for you:</p>
@@ -322,7 +322,7 @@
     <ul>
       <li>Map: one finger / left mouse paints. Two fingers pan and pinch-zoom. Mouse: right or middle drag pans, wheel zooms. Zoom in far enough and a pixel grid appears, so you can paint single pixels (brush size 1). <b>F</b> fits the map, <b>=</b> zooms to 1 screen pixel per map pixel.</li>
       <li>3D: one finger / left drag orbits, two fingers pan and zoom. Mouse: right drag pans, wheel zooms.</li>
-      <li>Keys: Ctrl+Z / Ctrl+Y undo / redo, [ and ] brush size, 1-9, 0 and − pick a biome (in swatch order).</li>
+      <li>Keys: Ctrl+Z / Ctrl+Y undo / redo, [ and ] brush size, 1-9 and 0 pick a biome (in swatch order: 1 = Ocean ... 0 = Forest).</li>
     </ul>
     <h3>Coordinates</h3>
     <p>Z is up. The image is a top-down map with north (+Y) at the top: pixel (col, row) sits at world x = col × m/px, y = (H − 1 − row) × m/px, z = height.</p>
@@ -365,22 +365,29 @@ const BIOMES = [
   { name: "Swamp",  key: [150, 170,  60], game: [ 78,  92,  52], water: true, wcol: [ 90, 110,  60, 0.45] },
   { name: "Desert", key: [255, 225, 120], game: [226, 200, 130] },
   { name: "Snow",   key: [185, 220, 255], game: [240, 244, 250] },   // icy blue-white
-  { name: "Fall",   key: [255, 110,  20], game: [196, 110,  40] },   // autumn forest
   { name: "Plains", key: [160, 255,  40], game: [106, 190,  48] },   // grassy plains
   { name: "Rock",   key: [255, 255, 255], game: [128, 130, 140] },   // neutral: grey / white
   { name: "Forest", key: [ 60, 255,  90], game: [ 40, 122,  52] },
 ];
 const B_OCEAN = 0, B_LAKE = 1, B_RIVER = 2, B_POND = 3, B_SWAMP = 4, B_DESERT = 5, B_SNOW = 6,
-      B_FALL = 7, B_PLAINS = 8, B_ROCK = 9, B_FOREST = 10;
+      B_PLAINS = 7, B_ROCK = 8, B_FOREST = 9;
 const IS_WATER = BIOMES.map((b) => !!b.water);
 
-// Maps saved before this palette (format version 2) used 7 biomes with other key
-// colors. They are decoded with the old keys and re-encoded with the new ones:
-// Water -> Ocean, Sand -> Desert, Grass -> Plains, Forest -> Forest, Dirt -> Desert
-// (bare ground), Rock -> Rock, Snow -> Snow. Heights are kept.
-const OLD_V2_KEYS = [[40, 120, 255], [255, 225, 120], [150, 255, 50], [40, 255, 120], [255, 150, 70], [255, 255, 255], [190, 225, 255]];
-const OLD_V2_TO_NEW = [B_OCEAN, B_DESERT, B_PLAINS, B_FOREST, B_DESERT, B_ROCK, B_SNOW];
-const MAP_VERSION = 3;   // stored in PNG metadata / autosave; < 3 means the old palette
+// Maps saved with an older palette are decoded with that palette's keys and re-encoded
+// with the current ones, keeping every height. MAP_VERSION is stored in PNG metadata,
+// the autosave and JSON projects.
+//   version <= 2 (7 biomes): Water -> Ocean, Sand -> Desert, Grass -> Plains,
+//     Forest -> Forest, Dirt -> Desert (bare ground), Rock -> Rock, Snow -> Snow.
+//   version 3 (11 biomes, had Fall at id 7): Fall -> Forest, ids 8..10 move down by one.
+const OLD_PALETTES = {
+  2: { keys: [[40, 120, 255], [255, 225, 120], [150, 255, 50], [40, 255, 120], [255, 150, 70], [255, 255, 255], [190, 225, 255]],
+       map: [B_OCEAN, B_DESERT, B_PLAINS, B_FOREST, B_DESERT, B_ROCK, B_SNOW] },
+  3: { keys: [[30, 70, 255], [60, 160, 255], [0, 230, 255], [0, 255, 190], [150, 170, 60], [255, 225, 120], [185, 220, 255],
+              [255, 110, 20], [160, 255, 40], [255, 255, 255], [60, 255, 90]],
+       map: [B_OCEAN, B_LAKE, B_RIVER, B_POND, B_SWAMP, B_DESERT, B_SNOW, B_FOREST, B_PLAINS, B_ROCK, B_FOREST] },
+};
+const MAP_VERSION = 4;   // current palette (10 biomes)
+const oldPaletteOf = (v) => OLD_PALETTES[v >= 3 ? 3 : 2];   // only called when v < MAP_VERSION
 
 // Water rules (meters). See computeWater().
 const RIVER_DEPTH = 0.8, SWAMP_DEPTH = 0.25, MIN_LAKE_DEPTH = 0.3;
@@ -518,9 +525,10 @@ function encodePixel(px, o, biome, h, dither) {
   return (T / ks - VMIN) / (1 - VMIN);
 }
 
-// Re-encode an image painted with the old (version 2) palette into the new one.
-function migrateV2Image(img) {
-  const ks = OLD_V2_KEYS.map((k) => k[0] + k[1] + k[2]), kc = OLD_V2_KEYS.map((k, j) => k.map((v) => v / ks[j]));
+// Re-encode an image painted with an older palette (see OLD_PALETTES) into the current one.
+function migrateImage(img, version) {
+  const P = oldPaletteOf(version);
+  const ks = P.keys.map((k) => k[0] + k[1] + k[2]), kc = P.keys.map((k, j) => k.map((v) => v / ks[j]));
   for (let i = 0, n = img.length / 4; i < n; i++) {
     const o = i * 4, r = img[o], g = img[o + 1], b = img[o + 2], sum = r + g + b;
     let best = 0, h = 0;
@@ -529,7 +537,7 @@ function migrateV2Image(img) {
       for (let k = 0; k < kc.length; k++) { const c = kc[k], d = (r / sum - c[0]) ** 2 + (g / sum - c[1]) ** 2 + (b / sum - c[2]) ** 2; if (d < bd) { bd = d; best = k; } }
       h = clamp((sum / ks[best] - VMIN) / (1 - VMIN), 0, 1);
     }
-    encodePixel(img, o, OLD_V2_TO_NEW[best], h, false);
+    encodePixel(img, o, P.map[best], h, false);
   }
 }
 
@@ -677,14 +685,14 @@ function loadProject(p) {
   const st = p.settings || {};
   const w = (st.w | 0) || (st.size | 0), h = (st.h | 0) || (st.size | 0), size = w;
   if (!(w >= 8 && w <= SIZE_MAX && h >= 8 && h <= SIZE_MAX)) throw new Error("Bad map size");
-  if ((p.version === 2 || p.version === MAP_VERSION) && p.image_rgb_b64) {
+  if (p.version >= 2 && p.version <= MAP_VERSION && p.image_rgb_b64) {
     const rgb = b64ToBytes(p.image_rgb_b64);
     if (rgb.length !== w * h * 3) throw new Error("Data does not match the map size");
     applySettings(st); allocMap(w, h);
     for (let i = 0; i < w * h; i++) { IMG[i * 4] = rgb[i * 3]; IMG[i * 4 + 1] = rgb[i * 3 + 1]; IMG[i * 4 + 2] = rgb[i * 3 + 2]; IMG[i * 4 + 3] = 255; }
-    if (p.version < MAP_VERSION) { migrateV2Image(IMG); decodeAll(); return "v2"; }
+    if (p.version < MAP_VERSION) { migrateImage(IMG, p.version); decodeAll(); return "old"; }
     decodeAll();
-    return "v3";
+    return "current";
   }
   if (p.height_u16_le_b64 && p.biome_u8_b64) {
     const hb = b64ToBytes(p.height_u16_le_b64), bb = b64ToBytes(p.biome_u8_b64);
@@ -692,7 +700,7 @@ function loadProject(p) {
     const h16 = new Uint16Array(hb.buffer, hb.byteOffset, size * size);
     const hf = new Float32Array(size * size);
     for (let i = 0; i < hf.length; i++) hf[i] = h16[i] / 65535;
-    for (let i = 0; i < bb.length; i++) bb[i] = bb[i] < OLD_V2_TO_NEW.length ? OLD_V2_TO_NEW[bb[i]] : B_PLAINS;
+    for (let i = 0; i < bb.length; i++) bb[i] = bb[i] < OLD_PALETTES[2].map.length ? OLD_PALETTES[2].map[bb[i]] : B_PLAINS;
     applySettings(st); allocMap(size, size);
     encodeFrom(hf, bb);
     return "v1";
@@ -741,9 +749,9 @@ function loadAutosave(a) {
   if (!(w >= SIZE_MIN && w <= SIZE_MAX && h >= SIZE_MIN && h <= SIZE_MAX) || a.img.length !== w * h * 4) return false;
   applySettings(a.settings); allocMap(w, h);
   IMG = a.img;
-  if (!(a.version >= MAP_VERSION)) migrateV2Image(IMG);
+  if (!(a.version >= MAP_VERSION)) migrateImage(IMG, a.version);
   decodeAll();
-  return a.version >= MAP_VERSION ? true : "v2";
+  return a.version >= MAP_VERSION ? true : "old";
 }
 
 //----- Map Resize -----||
@@ -927,8 +935,8 @@ function slopeDegOf(h, c, r) {
 function slopeDeg(c, r) { return slopeDegOf(H, c, r); }
 // Biome for every pixel from a height array (0..1). Returns a new biome array.
 // Ocean below sea level, Desert (sand) on the shore, Swamp patches on low flat land
-// near the sea, Rock on steep slopes, Snow up high, and Forest / Fall / Plains in
-// between from clumpy noise (Fall higher up). Lakes, rivers and ponds are painted.
+// near the sea, Rock on steep slopes, Snow up high, and Forest / Plains in between
+// from clumpy noise. Lakes, rivers and ponds are painted.
 function autoBiomes(h, beach, rockDeg, snowPct, forestPct) {
   const mw = S.w, mh = S.h, seed = 9173, out = new Uint8Array(mw * mh);
   const patch = Math.max(8, Math.round(Math.max(mw, mh) / 40));   // forest clump size in pixels
@@ -948,7 +956,6 @@ function autoBiomes(h, beach, rockDeg, snowPct, forestPct) {
           const f = fbm(c / patch, r / patch, seed, 3, 0.5);
           const hiFade = (h[i] * 100) / Math.max(1, snowPct);
           b = f < (forestPct / 100) * (1.15 - hiFade * 0.5) * 0.9 + 0.08 ? B_FOREST : B_PLAINS;
-          if (b === B_FOREST && hiFade > 0.45 && fbm(c / patch + 9, r / patch + 3, seed + 3, 2, 0.5) > 0.5) b = B_FALL;
           if (b === B_PLAINS && hiFade > 0.82) b = B_ROCK;
         }
       }
@@ -1712,9 +1719,9 @@ async function openMapPNG(file) {
   if (meta && meta.settings) applySettings(meta.settings);
   allocMap(nw, nh);
   IMG.set(px);
-  // Maps saved before the 11-biome palette carry version 2 metadata: convert them.
+  // Maps saved with an older palette carry an older version in their metadata: convert them.
   const oldPalette = meta && meta.app === "terrain-maker" && !(meta.version >= MAP_VERSION);
-  if (oldPalette) migrateV2Image(IMG);
+  if (oldPalette) migrateImage(IMG, meta.version);
   const changed = oldPalette ? 0 : canonicalizeAll();
   if (oldPalette) decodeAll();
   syncSettingsUI(); touched(true);
@@ -1870,8 +1877,8 @@ function buildExport(fmt) {
   L.push(`//----- Biomes -----||`);
   L.push(`// Index stored in the biome data. Stable: shared by every map, new biomes only go at the end.`);
   L.push(`// Ids 0..4 are water biomes (their height is the bed under the water).`);
-  L.push(`#ifndef TERRAIN_BIOMES_V3_DEFINED`);
-  L.push(`#define TERRAIN_BIOMES_V3_DEFINED`);
+  L.push(`#ifndef TERRAIN_BIOMES_V4_DEFINED`);
+  L.push(`#define TERRAIN_BIOMES_V4_DEFINED`);
   L.push(`enum TerrainBiome : uint8_t {`);
   BIOMES.forEach((b, k) => L.push(`    BIOME_${b.name.toUpperCase()} = ${k},`.padEnd(24) + `// key #${b.key.map(hex2).join("")}${b.water ? ", water" : ""}`));
   L.push(`    BIOME_COUNT = ${BIOMES.length}`);
@@ -1997,7 +2004,7 @@ function selectBiome(k) {
   biomeSel = k; updateSwatches();
   if (tool !== "paint" && tool !== "fill") setTool("paint");   // picking a color means: paint with it
 }
-const BIOME_KEYS = "1234567890-";   // keyboard shortcut per biome id
+const BIOME_KEYS = "1234567890";   // keyboard shortcut per biome id (0 = Forest; 1:1 zoom is "=")
 function buildSwatches() {
   const box = $("swatches"); box.innerHTML = "";
   BIOMES.forEach((b, k) => {
@@ -2265,11 +2272,11 @@ function drawGL(timed) {
   let loaded = false, migrated = false;
   let newPalette = false;
   try { loaded = loadAutosave(await idbGet(IDB_KEY)); } catch (e) { loaded = false; }
-  if (loaded === "v2") newPalette = true;
+  if (loaded === "old") newPalette = true;
   if (!loaded) {
     try {
       const raw = localStorage.getItem(SAVE_KEY);
-      if (raw) { newPalette = loadProject(JSON.parse(raw)) !== "v3"; loaded = true; migrated = true; }
+      if (raw) { newPalette = loadProject(JSON.parse(raw)) !== "current"; loaded = true; migrated = true; }
     } catch (e) { loaded = false; }
   }
   if (!loaded) {
@@ -2290,7 +2297,7 @@ function drawGL(timed) {
   onResize(); fitMap(); fitCamera(); updateStats();
   if (!localStorage.getItem(SAVE_KEY + ".helped")) openModal("helpModal");
   if (migrated) toast("Loaded your saved map");
-  if (newPalette) toast("Your saved map was converted to the new biome palette (Water → Ocean)");
+  if (newPalette) toast("Your saved map was converted to the current biome palette");
   if (!loaded || migrated || newPalette) scheduleSave();
   window.terrainMakerReady = true;
   requestAnimationFrame(frame);
