@@ -17,7 +17,7 @@ Each pixel is one terrain vertex.
 - The height is read from the channel sum: `height = ((r+g+b) / keySum - 0.3) / 0.7`. That gives about 250 to 535 height steps depending on the biome (0.5 m or finer at 120 m Max height).
 - Pure black (`r+g+b < 12`, no hue) counts as Ocean at 0 m.
 
-There are 11 biomes. The ids are stable (exported as `BIOME_OCEAN = 0` and so on), and new biomes will only be added at the end. The packed format allows up to 16.
+There are 10 biomes with contiguous ids 0..9, exported as `BIOME_OCEAN = 0` and so on. New biomes will only be added at the end. The packed format allows up to 16.
 
 | Id | Biome | Key color (map, max height) | Game color (3D + export) | Water |
 |---|---|---|---|---|
@@ -28,10 +28,9 @@ There are 11 biomes. The ids are stable (exported as `BIOME_OCEAN = 0` and so on
 | 4 | Swamp  | `#96AA3C` (150, 170, 60)  | 78, 92, 52    | yes |
 | 5 | Desert | `#FFE178` (255, 225, 120) | 226, 200, 130 | |
 | 6 | Snow   | `#B9DCFF` (185, 220, 255), icy blue-white | 240, 244, 250 | |
-| 7 | Fall (autumn forest) | `#FF6E14` (255, 110, 20) | 196, 110, 40 | |
-| 8 | Plains (grassy) | `#A0FF28` (160, 255, 40) | 106, 190, 48 | |
-| 9 | Rock   | `#FFFFFF` (255, 255, 255), grey/white | 128, 130, 140 | |
-| 10 | Forest | `#3CFF5A` (60, 255, 90)  | 40, 122, 52   | |
+| 7 | Plains (grassy) | `#A0FF28` (160, 255, 40) | 106, 190, 48 | |
+| 8 | Rock   | `#FFFFFF` (255, 255, 255), grey/white | 128, 130, 140 | |
+| 9 | Forest | `#3CFF5A` (60, 255, 90)  | 40, 122, 52   | |
 
 The key colors are spread out by hue, so every brightness of a key still reads as its own biome. The closest pair is Snow and Rock, at a chroma distance of 0.075. Rounding moves a pixel at most 0.0065, so no two keys can be confused. A test checks every biome at every brightness.
 
@@ -52,19 +51,14 @@ A sample is under water where `surface > bed`, and `depth = surface - bed`. The 
 
 ### Older maps
 
-Maps saved before this palette (PNG metadata, autosave or JSON at version 2 or lower) are converted when you load them. Each pixel is decoded with the old keys and re-encoded with the new ones, keeping its height:
+Maps saved with an older palette are converted when you load them. That covers PNG metadata, the autosave and JSON projects. Each pixel is decoded with the old keys and re-encoded with the current ones, keeping its height.
 
-| Old biome | New biome |
+| Saved as | Conversion |
 |---|---|
-| Water | Ocean |
-| Sand | Desert |
-| Grass | Plains |
-| Forest | Forest |
-| Dirt | Desert |
-| Rock | Rock |
-| Snow | Snow |
+| Version 3 (11 biomes) | Fall becomes Forest. Plains, Rock and Forest move from ids 8, 9, 10 to 7, 8, 9. Everything else keeps its id. |
+| Version 2 or lower (7 biomes) | Water becomes Ocean, Sand becomes Desert, Grass becomes Plains, Dirt becomes Desert. Forest, Rock and Snow stay the same. |
 
-PNGs without Terrain Maker metadata are read with the new palette.
+PNGs without Terrain Maker metadata are read with the current palette.
 
 ## Use
 
@@ -92,9 +86,9 @@ You can edit the PNG in any pixel editor. Keep it lossless (no JPEG, no smoothin
 Keys:
 - Ctrl+Z / Ctrl+Y: undo and redo
 - `[` `]`: change brush size
-- `1`-`9`, `0`, `-`: pick a biome in swatch order (Ocean ... Forest)
+- `1`-`9`, `0`: pick a biome in swatch order (`1` = Ocean ... `9` = Rock, `0` = Forest)
 - `F`: fit the map
-- `=`: 1:1 zoom
+- `=`: 1:1 zoom (stays on `=` because `0` picks Forest)
 
 ## Export
 
@@ -106,7 +100,7 @@ Every export is the full map: one sample per pixel. Pick one of three data forma
 | `uint8` height + `uint8` biome | 2 B | `uint8` | 3 B | 256 | 3.0 MB | 11.4 MB |
 | **packed** `uint16` | 2 B | `uint16` (0..4095) | 4 B | 4096 (12 bits) | 4.0 MB | 15.3 MB |
 
-**Packed:** height in the top 12 bits, biome in the low 4 bits, so `h = v >> 4` (0..4095) and `biome = v & 15`. That allows at most 16 biomes (there are 11). At 120 m Max height one step is about 3 cm.
+**Packed:** height in the top 12 bits, biome in the low 4 bits, so `h = v >> 4` (0..4095) and `biome = v & 15`. That allows at most 16 biomes (there are 10). At 120 m Max height one step is about 3 cm.
 
 Multiply any height or water value by `height_scale` to get meters. `height_scale` is `max_height / 65535`, `/ 255` or `/ 4095` depending on the format.
 
@@ -120,8 +114,8 @@ At 8-bit (0.47 m steps), very shallow water such as the 0.25 m swamp film can ro
   - Map: `name_w`, `name_h`, `name_meters_per_px`, `name_max_height`, `name_height_scale`, `name_sea_level`
   - Chunks: `name_chunk_cells`, `name_chunks_x`, `name_chunks_y`
   - Format: `name_is_packed`, `name_has_water`
-- **Shared tables** (behind the `TERRAIN_BIOMES_V3_DEFINED` guard):
-  - `enum TerrainBiome`: `BIOME_OCEAN = 0`, `BIOME_LAKE`, `BIOME_RIVER`, `BIOME_POND`, `BIOME_SWAMP`, `BIOME_DESERT`, `BIOME_SNOW`, `BIOME_FALL`, `BIOME_PLAINS`, `BIOME_ROCK`, `BIOME_FOREST = 10`, `BIOME_COUNT`
+- **Shared tables** (behind the `TERRAIN_BIOMES_V4_DEFINED` guard):
+  - `enum TerrainBiome`: `BIOME_OCEAN = 0`, `BIOME_LAKE`, `BIOME_RIVER`, `BIOME_POND`, `BIOME_SWAMP`, `BIOME_DESERT`, `BIOME_SNOW`, `BIOME_PLAINS`, `BIOME_ROCK`, `BIOME_FOREST = 9`, `BIOME_COUNT`
   - `terrain_biome_name` and `terrain_biome_is_water`
   - `terrain_biome_rgb` (game colors) and `terrain_biome_key_rgb` (map key colors)
   - `terrain_biome_water_rgba` (preview water tint)
