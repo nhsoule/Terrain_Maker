@@ -67,8 +67,8 @@
   .sliders label { flex: 1; display: flex; align-items: center; gap: 6px; font-size: 12px; color: #b9bccb; min-width: 0; }
   .sliders label b { font: 12px ui-monospace, Menlo, Consolas, monospace; color: #e8e8ee; min-width: 3.2em; text-align: right; font-weight: 400; }
   input[type=range] { flex: 1; min-width: 0; height: 28px; accent-color: #e0b43a; }
-  #swatches { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
-  .swatch { height: 38px; border-radius: 8px; border: 2px solid #0000; padding: 0; touch-action: manipulation;
+  #swatches { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; }
+  .swatch { height: 32px; border-radius: 8px; border: 2px solid #0000; padding: 0; touch-action: manipulation;
             font: 600 10px system-ui, sans-serif; color: #000a; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 2px; }
   .swatch.on { border-color: #fff; box-shadow: 0 0 0 2px #000 inset; }
 
@@ -219,14 +219,14 @@
     </select></label>
     <div id="sizePreview" class="statbox"></div>
     <div class="btnrow"><button id="setApply">Apply size</button></div>
-    <div class="note">Each pixel is one vertex, so the world is (pixels − 1) × m/px wide: 1025 px at 2 m is 1024 cells = 2048 m = exactly 32 chunks of 32 cells (1001 px at 2 m is exactly 2000 m). Width and height can differ (16 to 4096 px). Scaling resamples heights smoothly and biomes by nearest pixel; crop / pad keeps every pixel 1:1 and fills new area with sea floor (Water, 0 m). Undo brings the old size back.</div>
+    <div class="note">Each pixel is one vertex, so the world is (pixels − 1) × m/px wide: 1025 px at 2 m is 1024 cells = 2048 m = exactly 32 chunks of 32 cells (1001 px at 2 m is exactly 2000 m). Width and height can differ (16 to 4096 px). Scaling resamples heights smoothly and biomes by nearest pixel; crop / pad keeps every pixel 1:1 and fills new area with sea floor (Ocean, 0 m). Undo brings the old size back.</div>
     <div class="sub">Terrain</div>
     <label><span>Max height (m)</span><input id="setMaxH" type="number" min="1" max="4000" step="1" inputmode="decimal"></label>
     <label><span>Sea level (m)</span><input id="setSea" type="number" min="0" max="4000" step="0.5" inputmode="decimal"></label>
     <label><span>Chunk size (pixels)</span>
       <select id="setChunk"><option>8</option><option>16</option><option>32</option><option>64</option><option>128</option><option>256</option></select></label>
     <label><span>Vertex size (bytes)</span><input id="setVBytes" type="number" min="4" max="64" step="1" inputmode="numeric"></label>
-    <label><span>Show water plane</span><input id="setWater" type="checkbox"></label>
+    <label><span>Show water in 3D</span><input id="setWater" type="checkbox"></label>
     <div class="note">Brightness is height 0..1 scaled by Max height, so changing Max height stretches the whole map. Vertex size only feeds the memory numbers below (your engine's vertex format).</div>
     <div id="mapStats" class="statbox"></div>
   </div>
@@ -251,7 +251,7 @@
 <div id="autoModal" class="modal">
   <div class="card">
     <div class="head"><span>Auto biome</span><button id="amClose" class="alt">Cancel</button></div>
-    <div class="note">Re-colors every pixel from its height and slope, keeping its brightness: water below sea level, sand on the shore, rock on steep slopes, snow up high, forest and grass in between. Undo brings it back; paint over it after.</div>
+    <div class="note">Re-colors every pixel from its height and slope, keeping its brightness: Ocean below sea level, Desert sand on the shore, Swamp on some low flat land near the sea, Rock on steep slopes, Snow up high, and Forest, Fall forest (higher up) and Plains in between. Lakes, rivers and ponds are yours to paint (this replaces any already painted). Undo brings it back; paint over it after.</div>
     <label><span>Beach height (m)</span><input id="autoBeach" type="number" min="0" step="0.5" value="2" inputmode="decimal"></label>
     <label><span>Rock slope (°)</span><input id="autoRock" type="number" min="5" max="85" step="1" value="40" inputmode="decimal"></label>
     <label><span>Snow above (% of max)</span><input id="autoSnow" type="number" min="0" max="100" step="1" value="78" inputmode="decimal"></label>
@@ -296,11 +296,19 @@
     <ul>
       <li><b>Hue = biome.</b> Every biome has a key color (the swatches). A pixel belongs to the biome whose key color has the closest hue, no matter how bright or dark the pixel is.</li>
       <li><b>Brightness = height.</b> The biome's full key color is Max height. Darker shades of that color are lower, down to <b>30% brightness at 0 m</b>, never black.</li>
-      <li>Grey and white are <b>Rock</b>; <b>Snow</b> is the icy blue-white. Pure black (no hue) counts as Water at 0 m.</li>
+      <li>Grey and white are <b>Rock</b>; <b>Snow</b> is the icy blue-white. Pure black (no hue) counts as Ocean at 0 m.</li>
     </ul>
-    <p>The 30% floor is there so dark, low pixels still show their hue: deep water is dark blue and low forest is dark green, not black. It costs a little precision: there are still about 290 to 530 height steps per biome (0.4 m steps at 120 m Max height).</p>
+    <p>11 biomes (id: name): 0 Ocean, 1 Lake, 2 River, 3 Pond, 4 Swamp, 5 Desert, 6 Snow, 7 Fall (autumn forest), 8 Plains (grassy), 9 Rock, 10 Forest. The ids never change, so a game can rely on them.</p>
+    <p>The 30% floor is there so dark, low pixels still show their hue: deep water is dark blue and low forest is dark green, not black. It costs a little precision: there are still about 250 to 530 height steps per biome (0.5 m steps at 120 m Max height).</p>
     <h3>Water</h3>
-    <p><b>Sea level</b> (Map settings) decides where the sea is: the 3D water plane sits there, and Auto biome colors everything below it Water. The <b>Water</b> biome is the color of wet ground (sea floor, lake or river bed), and its brightness is the bed height like any other biome, so deeper water is darker blue. A Water pixel above sea level is a lake or river bed.</p>
+    <p>Ocean, Lake, River, Pond and Swamp are <b>water biomes</b>. Like every biome their brightness is the height of the <b>bed</b> (sea floor, lake bottom, river bed). The water surface on top is worked out for you:</p>
+    <ul>
+      <li><b>Ocean</b>: the surface is <b>Sea level</b> (Map settings). Auto biome makes everything below it Ocean.</li>
+      <li><b>Lake / Pond</b>: each connected patch fills up to its <b>spill level</b>, the lowest ground around its edge (at least 0.3 m deep). Bed that sticks out above it is dry shore. Paint the bed lower than the banks to get a deep lake.</li>
+      <li><b>River</b>: 0.8 m over the bed, and always flowing downhill toward where it meets Ocean, Lake or Pond (a dip in the bed becomes a calm pool, never water running uphill).</li>
+      <li><b>Swamp</b>: wet ground with a 0.25 m film of standing water.</li>
+    </ul>
+    <p>The 3D view shows the water see-through, tinted per type (toggle in Map settings). Export includes the water surface per sample.</p>
     <h3>Tools</h3>
     <ul>
       <li><b>Raise / Lower</b> brighten or darken the pixels and keep their hue. <b>Smooth</b> blurs heights. <b>Flatten</b> pulls toward the height where the stroke started, which is good for plateaus and build sites.</li>
@@ -312,9 +320,9 @@
     </ul>
     <h3>Controls</h3>
     <ul>
-      <li>Map: one finger / left mouse paints. Two fingers pan and pinch-zoom. Mouse: right or middle drag pans, wheel zooms. Zoom in far enough and a pixel grid appears, so you can paint single pixels (brush size 1). <b>F</b> fits the map, <b>0</b> zooms to 1 screen pixel per map pixel.</li>
+      <li>Map: one finger / left mouse paints. Two fingers pan and pinch-zoom. Mouse: right or middle drag pans, wheel zooms. Zoom in far enough and a pixel grid appears, so you can paint single pixels (brush size 1). <b>F</b> fits the map, <b>=</b> zooms to 1 screen pixel per map pixel.</li>
       <li>3D: one finger / left drag orbits, two fingers pan and zoom. Mouse: right drag pans, wheel zooms.</li>
-      <li>Keys: Ctrl+Z / Ctrl+Y undo / redo, [ and ] brush size, 1-7 pick a biome.</li>
+      <li>Keys: Ctrl+Z / Ctrl+Y undo / redo, [ and ] brush size, 1-9, 0 and − pick a biome (in swatch order).</li>
     </ul>
     <h3>Coordinates</h3>
     <p>Z is up. The image is a top-down map with north (+Y) at the top: pixel (col, row) sits at world x = col × m/px, y = (H − 1 − row) × m/px, z = height.</p>
@@ -343,16 +351,40 @@ const $ = (id) => document.getElementById(id);
 //   key:  the color of this biome in the map image at Max height. Bright and well apart
 //         in hue so every shade of it still reads as this biome. Darker = lower.
 //   game: the flat color the terrain is drawn with (3D preview, exported palette).
+//   water: a water biome. Its brightness is the BED height; the water surface on top is
+//          worked out from the rules in computeWater() (and exported per sample).
+//   wcol:  water surface color + alpha in the 3D preview (water biomes only).
+// Key colors are spread out in chromaticity (r:g:b ratio) so every brightness of one key
+// still classifies as that biome. The closest pair (Snow / Rock) is 0.075 apart, while
+// rounding moves a canonical pixel at most 0.0065, so they can never be confused.
 const BIOMES = [
-  { name: "Water",  key: [ 40, 120, 255], game: [ 46, 110, 214] },
-  { name: "Sand",   key: [255, 225, 120], game: [232, 208, 122] },
-  { name: "Grass",  key: [150, 255,  50], game: [106, 190,  48] },
-  { name: "Forest", key: [ 40, 255, 120], game: [ 40, 122,  52] },
-  { name: "Dirt",   key: [255, 150,  70], game: [138,  92,  48] },
+  { name: "Ocean",  key: [ 30,  70, 255], game: [ 58,  86, 120], water: true, wcol: [ 28,  78, 190, 0.62] },
+  { name: "Lake",   key: [ 60, 160, 255], game: [ 76,  98, 110], water: true, wcol: [ 40, 115, 215, 0.70] },
+  { name: "River",  key: [  0, 230, 255], game: [ 98, 104,  96], water: true, wcol: [ 70, 170, 220, 0.55] },
+  { name: "Pond",   key: [  0, 255, 190], game: [ 74,  90,  64], water: true, wcol: [ 50, 140, 160, 0.65] },
+  { name: "Swamp",  key: [150, 170,  60], game: [ 78,  92,  52], water: true, wcol: [ 90, 110,  60, 0.45] },
+  { name: "Desert", key: [255, 225, 120], game: [226, 200, 130] },
+  { name: "Snow",   key: [185, 220, 255], game: [240, 244, 250] },   // icy blue-white
+  { name: "Fall",   key: [255, 110,  20], game: [196, 110,  40] },   // autumn forest
+  { name: "Plains", key: [160, 255,  40], game: [106, 190,  48] },   // grassy plains
   { name: "Rock",   key: [255, 255, 255], game: [128, 130, 140] },   // neutral: grey / white
-  { name: "Snow",   key: [190, 225, 255], game: [240, 244, 250] },   // icy blue-white
+  { name: "Forest", key: [ 60, 255,  90], game: [ 40, 122,  52] },
 ];
-const B_WATER = 0, B_SAND = 1, B_GRASS = 2, B_FOREST = 3, B_DIRT = 4, B_ROCK = 5, B_SNOW = 6;
+const B_OCEAN = 0, B_LAKE = 1, B_RIVER = 2, B_POND = 3, B_SWAMP = 4, B_DESERT = 5, B_SNOW = 6,
+      B_FALL = 7, B_PLAINS = 8, B_ROCK = 9, B_FOREST = 10;
+const IS_WATER = BIOMES.map((b) => !!b.water);
+
+// Maps saved before this palette (format version 2) used 7 biomes with other key
+// colors. They are decoded with the old keys and re-encoded with the new ones:
+// Water -> Ocean, Sand -> Desert, Grass -> Plains, Forest -> Forest, Dirt -> Desert
+// (bare ground), Rock -> Rock, Snow -> Snow. Heights are kept.
+const OLD_V2_KEYS = [[40, 120, 255], [255, 225, 120], [150, 255, 50], [40, 255, 120], [255, 150, 70], [255, 255, 255], [190, 225, 255]];
+const OLD_V2_TO_NEW = [B_OCEAN, B_DESERT, B_PLAINS, B_FOREST, B_DESERT, B_ROCK, B_SNOW];
+const MAP_VERSION = 3;   // stored in PNG metadata / autosave; < 3 means the old palette
+
+// Water rules (meters). See computeWater().
+const RIVER_DEPTH = 0.8, SWAMP_DEPTH = 0.25, MIN_LAKE_DEPTH = 0.3;
+const NO_WATER = -1e9;
 
 // Brightness floor: height 0 is drawn at 30% of the key color, height 1 at 100%. Below
 // about 30% hues turn to mud on screen (and in other paint apps), so this keeps every
@@ -443,13 +475,13 @@ function fbm(x, y, seed, octaves, rough) {
 //   height = (bright - VMIN) / (1 - VMIN), clamped to 0..1
 // Using the channel SUM (not just the max channel) gives 290..535 height steps per biome
 // instead of ~180, because the three channels round at different points.
-// Near-black pixels (sum < 12) have no hue: they count as Water at height 0.
+// Near-black pixels (sum < 12) have no hue: they count as Ocean at height 0.
 const KEY_SUM = BIOMES.map((b) => b.key[0] + b.key[1] + b.key[2]);
 const KEY_CHROMA = BIOMES.map((b, k) => b.key.map((v) => v / KEY_SUM[k]));
 
 function nearestBiome(r, g, b) {
   const s = r + g + b;
-  if (s < 12) return B_WATER;
+  if (s < 12) return B_OCEAN;
   const cr = r / s, cg = g / s, cb = b / s;
   let best = 0, bd = Infinity;
   for (let k = 0; k < BIOMES.length; k++) {
@@ -486,6 +518,21 @@ function encodePixel(px, o, biome, h, dither) {
   return (T / ks - VMIN) / (1 - VMIN);
 }
 
+// Re-encode an image painted with the old (version 2) palette into the new one.
+function migrateV2Image(img) {
+  const ks = OLD_V2_KEYS.map((k) => k[0] + k[1] + k[2]), kc = OLD_V2_KEYS.map((k, j) => k.map((v) => v / ks[j]));
+  for (let i = 0, n = img.length / 4; i < n; i++) {
+    const o = i * 4, r = img[o], g = img[o + 1], b = img[o + 2], sum = r + g + b;
+    let best = 0, h = 0;
+    if (sum >= 12) {
+      let bd = Infinity;
+      for (let k = 0; k < kc.length; k++) { const c = kc[k], d = (r / sum - c[0]) ** 2 + (g / sum - c[1]) ** 2 + (b / sum - c[2]) ** 2; if (d < bd) { bd = d; best = k; } }
+      h = clamp((sum / ks[best] - VMIN) / (1 - VMIN), 0, 1);
+    }
+    encodePixel(img, o, OLD_V2_TO_NEW[best], h, false);
+  }
+}
+
 //----- App State -----||
 const S = {
   name: "world",
@@ -496,7 +543,7 @@ const S = {
   sea: 12,            // sea level in meters
   chunk: 32,          // chunk edge in pixels (cells)
   vbytes: 12,         // bytes per vertex in the target engine (memory stats only)
-  water: true,        // draw the water plane in 3D
+  water: true,        // draw the water surfaces in 3D
 };
 // IMG is the map: RGBA, row-major, row 0 = north (top). H and B are decoded from it
 // (kept in sync by setPixel / decodeAll) so tools, 3D and export don't re-decode.
@@ -504,7 +551,7 @@ let IMG = new Uint8ClampedArray(S.w * S.h * 4);
 let H = new Float32Array(S.w * S.h);   // height 0..1 per pixel (decoded)
 let B = new Uint8Array(S.w * S.h);     // biome index per pixel (decoded)
 let tool = "raise";
-let biomeSel = B_GRASS;
+let biomeSel = B_PLAINS;
 let brushSize = 10, brushStr = 0.5;
 let showChunks = true;
 let viewDirty = true, glRedraw = true;
@@ -583,7 +630,7 @@ function updateUndoButtons() { $("bUndo").disabled = !undoStack.length; $("bRedo
 
 // Something changed: redraw the map, rebuild the 3D mesh, save soon.
 function touched(resized) {
-  viewDirty = true; glRedraw = true;
+  viewDirty = true; glRedraw = true; waterDirty = true;
   if (resized) { syncSizeUI(); fitMap(); fitCamera(); }
   updateStats();
   scheduleSave();
@@ -617,7 +664,7 @@ function projectJSON() {
   const n = S.w * S.h, rgb = new Uint8Array(n * 3);
   for (let i = 0; i < n; i++) { rgb[i * 3] = IMG[i * 4]; rgb[i * 3 + 1] = IMG[i * 4 + 1]; rgb[i * 3 + 2] = IMG[i * 4 + 2]; }
   return {
-    app: "terrain-maker", version: 2,
+    app: "terrain-maker", version: MAP_VERSION,
     settings: settingsJSON(),
     image_rgb_b64: bytesToB64(rgb),
     biomes: BIOMES.map((b) => ({ name: b.name, key: b.key, game: b.game })),
@@ -630,13 +677,14 @@ function loadProject(p) {
   const st = p.settings || {};
   const w = (st.w | 0) || (st.size | 0), h = (st.h | 0) || (st.size | 0), size = w;
   if (!(w >= 8 && w <= SIZE_MAX && h >= 8 && h <= SIZE_MAX)) throw new Error("Bad map size");
-  if (p.version === 2 && p.image_rgb_b64) {
+  if ((p.version === 2 || p.version === MAP_VERSION) && p.image_rgb_b64) {
     const rgb = b64ToBytes(p.image_rgb_b64);
     if (rgb.length !== w * h * 3) throw new Error("Data does not match the map size");
     applySettings(st); allocMap(w, h);
     for (let i = 0; i < w * h; i++) { IMG[i * 4] = rgb[i * 3]; IMG[i * 4 + 1] = rgb[i * 3 + 1]; IMG[i * 4 + 2] = rgb[i * 3 + 2]; IMG[i * 4 + 3] = 255; }
+    if (p.version < MAP_VERSION) { migrateV2Image(IMG); decodeAll(); return "v2"; }
     decodeAll();
-    return "v2";
+    return "v3";
   }
   if (p.height_u16_le_b64 && p.biome_u8_b64) {
     const hb = b64ToBytes(p.height_u16_le_b64), bb = b64ToBytes(p.biome_u8_b64);
@@ -644,7 +692,7 @@ function loadProject(p) {
     const h16 = new Uint16Array(hb.buffer, hb.byteOffset, size * size);
     const hf = new Float32Array(size * size);
     for (let i = 0; i < hf.length; i++) hf[i] = h16[i] / 65535;
-    for (let i = 0; i < bb.length; i++) if (bb[i] >= BIOMES.length) bb[i] = B_GRASS;
+    for (let i = 0; i < bb.length; i++) bb[i] = bb[i] < OLD_V2_TO_NEW.length ? OLD_V2_TO_NEW[bb[i]] : B_PLAINS;
     applySettings(st); allocMap(size, size);
     encodeFrom(hf, bb);
     return "v1";
@@ -683,7 +731,7 @@ async function idbGet(key) {
 let saveTimer = 0;
 function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 800); }
 async function saveNow() {
-  try { await idbPut(IDB_KEY, { app: "terrain-maker", version: 2, settings: settingsJSON(), w: S.w, h: S.h, img: IMG }); }
+  try { await idbPut(IDB_KEY, { app: "terrain-maker", version: MAP_VERSION, settings: settingsJSON(), w: S.w, h: S.h, img: IMG }); }
   catch (e) { toast("Autosave failed. Use File > Save map PNG."); }
 }
 // Loads the IndexedDB autosave; false if there is none or it doesn't fit.
@@ -692,8 +740,10 @@ function loadAutosave(a) {
   const w = a.w | 0, h = a.h | 0;
   if (!(w >= SIZE_MIN && w <= SIZE_MAX && h >= SIZE_MIN && h <= SIZE_MAX) || a.img.length !== w * h * 4) return false;
   applySettings(a.settings); allocMap(w, h);
-  IMG = a.img; decodeAll();
-  return true;
+  IMG = a.img;
+  if (!(a.version >= MAP_VERSION)) migrateV2Image(IMG);
+  decodeAll();
+  return a.version >= MAP_VERSION ? true : "v2";
 }
 
 //----- Map Resize -----||
@@ -716,12 +766,12 @@ function resampleTo(nw, nh) {
   allocMap(nw, nh); encodeFrom(hh, bb);
 }
 // Keep every pixel 1:1: the old image is placed at an offset (centered, or at the NW
-// corner) and whatever falls outside is cut; new area is sea floor (Water, 0 m).
+// corner) and whatever falls outside is cut; new area is sea floor (Ocean, 0 m).
 function cropPadTo(nw, nh, anchor) {
   const ow = S.w, oh = S.h, old = IMG;
   const dx = anchor === "center" ? Math.floor((nw - ow) / 2) : 0, dy = anchor === "center" ? Math.floor((nh - oh) / 2) : 0;
   allocMap(nw, nh);
-  const fill = new Uint8ClampedArray(4); encodePixel(fill, 0, B_WATER, 0, false);
+  const fill = new Uint8ClampedArray(4); encodePixel(fill, 0, B_OCEAN, 0, false);
   for (let i = 0; i < nw * nh; i++) IMG.set(fill, i * 4);
   for (let r = 0; r < oh; r++) {
     const nr = r + dy; if (nr < 0 || nr >= nh) continue;
@@ -876,25 +926,165 @@ function slopeDegOf(h, c, r) {
 }
 function slopeDeg(c, r) { return slopeDegOf(H, c, r); }
 // Biome for every pixel from a height array (0..1). Returns a new biome array.
+// Ocean below sea level, Desert (sand) on the shore, Swamp patches on low flat land
+// near the sea, Rock on steep slopes, Snow up high, and Forest / Fall / Plains in
+// between from clumpy noise (Fall higher up). Lakes, rivers and ponds are painted.
 function autoBiomes(h, beach, rockDeg, snowPct, forestPct) {
   const mw = S.w, mh = S.h, seed = 9173, out = new Uint8Array(mw * mh);
+  const patch = Math.max(8, Math.round(Math.max(mw, mh) / 40));   // forest clump size in pixels
   for (let r = 0; r < mh; r++) {
     for (let c = 0; c < mw; c++) {
       const i = r * mw + c, z = h[i] * S.maxH;
       let b;
-      if (z < S.sea) b = B_WATER;
-      else if (z < S.sea + beach) b = B_SAND;
+      if (z < S.sea) b = B_OCEAN;
+      else if (z < S.sea + beach) b = B_DESERT;
       else if (h[i] * 100 >= snowPct) b = B_SNOW;
-      else if (slopeDegOf(h, c, r) >= rockDeg) b = B_ROCK;
       else {
-        // Clumpy forest patches from low-frequency noise, thinning out with height.
-        const f = fbm(c / 24, r / 24, seed, 3, 0.5);
-        const hiFade = (h[i] * 100) / Math.max(1, snowPct);
-        b = f < (forestPct / 100) * (1.15 - hiFade * 0.5) * 0.9 + 0.08 ? B_FOREST : B_GRASS;
-        if (b === B_GRASS && hiFade > 0.82) b = B_DIRT;
+        const slope = slopeDegOf(h, c, r);
+        if (slope >= rockDeg) b = B_ROCK;
+        else if (z < S.sea + beach + 4 && slope < 4 && fbm(c / patch + 50, r / patch, seed + 7, 3, 0.5) > 0.56) b = B_SWAMP;
+        else {
+          // Clumpy forest patches from low-frequency noise, thinning out with height.
+          const f = fbm(c / patch, r / patch, seed, 3, 0.5);
+          const hiFade = (h[i] * 100) / Math.max(1, snowPct);
+          b = f < (forestPct / 100) * (1.15 - hiFade * 0.5) * 0.9 + 0.08 ? B_FOREST : B_PLAINS;
+          if (b === B_FOREST && hiFade > 0.45 && fbm(c / patch + 9, r / patch + 3, seed + 3, 2, 0.5) > 0.5) b = B_FALL;
+          if (b === B_PLAINS && hiFade > 0.82) b = B_ROCK;
+        }
       }
       out[i] = b;
     }
+  }
+  return out;
+}
+
+//----- Water Surfaces -----||
+// Water biomes are painted as their BED (brightness = bed height). The water surface on
+// top of each water pixel, in meters, comes from these rules:
+//   Ocean: the sea level.
+//   Lake, Pond: each connected region (4-neighbour, same biome) fills to its spill level,
+//         the lowest height around its border (neighbour bed height; an Ocean neighbour
+//         counts as at least sea level). It is at least MIN_LAKE_DEPTH over the region's
+//         lowest bed, so a painted lake always holds some water. Bed above the surface
+//         is dry shore.
+//   River: bed + RIVER_DEPTH, then made to flow downhill with a priority flood from
+//         its outlets (river pixels touching Ocean / Lake / Pond, or the lowest pixel of a
+//         river with no outlet): walking upstream the surface never drops, so dips in
+//         the bed become calm pools instead of water flowing uphill.
+//   Swamp: wet land, a SWAMP_DEPTH film of standing water over the bed.
+// A pixel holds water where surface > bed. Land pixels get NO_WATER.
+let WS = new Float32Array(0);        // water surface per pixel (meters) or NO_WATER
+let waterDirty = true, waterStats = { ms: 0, lakes: 0, ponds: 0, rivers: 0 };
+
+// Binary min-heap of pixel indices keyed by a float (for the river flood).
+function makeHeap(cap) {
+  const key = new Float64Array(cap), idx = new Int32Array(cap);
+  let n = 0;
+  return {
+    get size() { return n; },
+    push(k, i) {
+      let p = n++;
+      while (p > 0) { const q = (p - 1) >> 1; if (key[q] <= k) break; key[p] = key[q]; idx[p] = idx[q]; p = q; }
+      key[p] = k; idx[p] = i;
+    },
+    pop() {
+      const top = idx[0], k = key[--n], i = idx[n];
+      let p = 0;
+      for (;;) {
+        let c = 2 * p + 1; if (c >= n) break;
+        if (c + 1 < n && key[c + 1] < key[c]) c++;
+        if (key[c] >= k) break;
+        key[p] = key[c]; idx[p] = idx[c]; p = c;
+      }
+      key[p] = k; idx[p] = i;
+      return top;
+    },
+  };
+}
+
+function computeWater() {
+  const t0 = performance.now();
+  const mw = S.w, mh = S.h, n = mw * mh, maxH = S.maxH;
+  if (WS.length !== n) WS = new Float32Array(n);
+  WS.fill(NO_WATER);
+  const bed = (i) => H[i] * maxH;
+  const nb4 = (i, f) => { const c = i % mw; if (c > 0) f(i - 1); if (c < mw - 1) f(i + 1); if (i >= mw) f(i - mw); if (i < n - mw) f(i + mw); };
+  let lakes = 0, ponds = 0, rivers = 0;
+
+  // Ocean and swamp: per pixel.
+  for (let i = 0; i < n; i++) {
+    if (B[i] === B_OCEAN) WS[i] = S.sea;
+    else if (B[i] === B_SWAMP) WS[i] = bed(i) + SWAMP_DEPTH;
+  }
+  // Lakes and ponds: per connected region, fill to the spill level.
+  const seen = new Uint8Array(n), list = [];
+  for (let s = 0; s < n; s++) {
+    if (seen[s] || (B[s] !== B_LAKE && B[s] !== B_POND)) continue;
+    const kind = B[s];
+    list.length = 0; list.push(s); seen[s] = 1;
+    let minBed = Infinity, maxBed = -Infinity, spill = Infinity;
+    for (let k = 0; k < list.length; k++) {
+      const i = list[k], z = bed(i);
+      if (z < minBed) minBed = z; if (z > maxBed) maxBed = z;
+      nb4(i, (j) => {
+        if (B[j] === kind) { if (!seen[j]) { seen[j] = 1; list.push(j); } }
+        else { const zj = B[j] === B_OCEAN ? Math.max(bed(j), S.sea) : bed(j); if (zj < spill) spill = zj; }
+      });
+    }
+    const surf = spill === Infinity ? maxBed + MIN_LAKE_DEPTH : Math.max(spill, minBed + MIN_LAKE_DEPTH);
+    for (const i of list) WS[i] = surf;
+    if (kind === B_LAKE) lakes++; else ponds++;
+  }
+  // Rivers: priority flood from the outlets, so the surface only rises going upstream.
+  const heap = makeHeap(n), done = new Uint8Array(n);
+  const flood = () => {
+    while (heap.size) {
+      const i = heap.pop(), si = WS[i];
+      nb4(i, (j) => {
+        if (B[j] !== B_RIVER || done[j]) return;
+        done[j] = 1; WS[j] = Math.max(bed(j) + RIVER_DEPTH, si); heap.push(WS[j], j);
+      });
+    }
+  };
+  for (let i = 0; i < n; i++) {
+    if (B[i] !== B_RIVER) continue;
+    let out = -Infinity;
+    nb4(i, (j) => { if (B[j] === B_OCEAN || B[j] === B_LAKE || B[j] === B_POND) out = Math.max(out, WS[j]); });
+    if (out > -Infinity) { done[i] = 1; WS[i] = Math.max(bed(i) + RIVER_DEPTH, out); heap.push(WS[i], i); }
+  }
+  flood();
+  // Rivers with no outlet: start from the lowest pixel of each one.
+  for (let s = 0; s < n; s++) {
+    if (B[s] !== B_RIVER || done[s]) continue;
+    rivers++;
+    list.length = 0; list.push(s); seen[s] = 2;
+    let low = s;
+    for (let k = 0; k < list.length; k++) {
+      const i = list[k]; if (bed(i) < bed(low)) low = i;
+      nb4(i, (j) => { if (B[j] === B_RIVER && !done[j] && seen[j] !== 2) { seen[j] = 2; list.push(j); } });
+    }
+    done[low] = 1; WS[low] = bed(low) + RIVER_DEPTH; heap.push(WS[low], low);
+    flood();
+  }
+  waterStats = { ms: performance.now() - t0, lakes, ponds, rivers };
+  waterDirty = false; waterUploaded = false;   // the 3D view needs the new surfaces
+}
+
+// For the 3D preview: water pixels keep their surface; land pixels next to water take
+// the highest neighbouring surface, so the water sheet reaches the shoreline and the
+// terrain cuts it there. Everything else is NO_WATER (that part of the sheet is hidden).
+function waterRenderSurface() {
+  const mw = S.w, mh = S.h, n = mw * mh, out = new Float32Array(n), maxH = S.maxH;
+  const wet = (i) => WS[i] !== NO_WATER && WS[i] > H[i] * maxH;
+  for (let i = 0; i < n; i++) {
+    if (wet(i)) { out[i] = WS[i]; continue; }
+    const c = i % mw, r = (i / mw) | 0;
+    let best = NO_WATER;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const x = c + dx, y = r + dy;
+      if ((dx || dy) && x >= 0 && y >= 0 && x < mw && y < mh) { const j = y * mw + x; if (wet(j) && WS[j] > best) best = WS[j]; }
+    }
+    out[i] = best === NO_WATER && WS[i] !== NO_WATER ? WS[i] : best;
   }
   return out;
 }
@@ -984,12 +1174,17 @@ function drawMap() {
 function screenToMap(sx, sy) { return [(sx - mapView.ox) / mapView.zoom - 0.5, (sy - mapView.oy) / mapView.zoom - 0.5]; }
 
 const hex2 = (v) => v.toString(16).padStart(2, "0");
+function hoverWater(i) {
+  if (!IS_WATER[B[i]] || waterDirty || WS.length !== H.length) return "";
+  const d = WS[i] - H[i] * S.maxH;
+  return d > 0 ? `  water ${WS[i].toFixed(1)} m (${d.toFixed(1)} deep)` : "  dry";
+}
 function updateHover() {
   if (!hoverPx) { $("hover").textContent = ""; return; }
   const mw = S.w, mh = S.h, c = Math.round(hoverPx[0]), r = Math.round(hoverPx[1]);
   if (c < 0 || r < 0 || c >= mw || r >= mh) { $("hover").textContent = ""; return; }
   const i = r * mw + c, o = i * 4, zp = mapView.zoom * (window.devicePixelRatio || 1);
-  $("hover").textContent = `px ${c},${r}  #${hex2(IMG[o])}${hex2(IMG[o + 1])}${hex2(IMG[o + 2])}  ${BIOMES[B[i]].name}  h ${(H[i] * S.maxH).toFixed(1)} m  slope ${slopeDeg(c, r).toFixed(0)}°  world ${fmtM(c * S.mpp)}, ${fmtM((mh - 1 - r) * S.mpp)}  zoom ${zp >= 1 ? zp.toFixed(zp < 10 ? 1 : 0) + "×" : "1:" + (1 / zp).toFixed(1)}`;
+  $("hover").textContent = `px ${c},${r}  #${hex2(IMG[o])}${hex2(IMG[o + 1])}${hex2(IMG[o + 2])}  ${BIOMES[B[i]].name}  h ${(H[i] * S.maxH).toFixed(1)} m${hoverWater(i)}  slope ${slopeDeg(c, r).toFixed(0)}°  world ${fmtM(c * S.mpp)}, ${fmtM((mh - 1 - r) * S.mpp)}  zoom ${zp >= 1 ? zp.toFixed(zp < 10 ? 1 : 0) + "×" : "1:" + (1 / zp).toFixed(1)}`;
 }
 
 //----- 2D Map Input -----||
@@ -1069,7 +1264,8 @@ mapCv.addEventListener("wheel", (e) => {
 // Tiles stay at most 256 x 256 vertices so the indices fit in uint16.
 const glCv = $("gl");
 const gl = glCv.getContext("webgl2", { antialias: true, powerPreference: "high-performance" });
-let prog = null, waterProg = null, U = {}, WU = {}, gridVAO = null, gridIBO = null, waterVAO = null;
+let prog = null, waterProg = null, U = {}, WU = {}, gridVAO = null, gridIBO = null;
+let texWS = null, waterUploaded = false;
 let texH = null, texB = null, texW = 0, texHt = 0, maxTex = 0;
 let tile = { tx: 0, ty: 0, nx: 0, ny: 0, count: 0, forW: 0, forH: 0 };
 let glTooBig = false, lastDrawMs = 0;
@@ -1144,23 +1340,70 @@ void main() {
   gl.uniform3fv(U.uSun, SUN);
   gl.uniform3fv(U.uPal, new Float32Array(BIOMES.flatMap((b) => b.game.map((v) => v / 255))));
 
-  // Water: one quad at sea level, a little bigger than the map, made from gl_VertexID.
+  // Water: the same tiled grid, a second time, lifted to the water surface texture.
+  // A cell is drawn if any of its 4 corners is wet (water biome, surface above bed), in
+  // the water color of that corner's biome, see-through so the bed shows below.
   waterProg = makeProgram(`#version 300 es
-uniform vec4 uRect;     // x0, y0, x1, y1 in meters
-uniform float uZ;
+precision highp float;
+precision highp int;
+uniform highp sampler2D uHeight;
+uniform highp sampler2D uWater;    // R32F, render surface in meters (or very low = none)
+uniform ivec2 uSize;
+uniform ivec2 uTile;
+uniform int uTilesX;
+uniform float uMpp, uMaxH;
 uniform mat4 uMVP;
+out vec3 vWorld;
+out vec2 vGrid;
 void main() {
-  int i = gl_VertexID;
-  vec2 p = vec2((i == 1 || i == 2 || i == 4) ? uRect.z : uRect.x, (i == 2 || i == 4 || i == 5) ? uRect.w : uRect.y);
-  gl_Position = uMVP * vec4(p, uZ, 1.0);
+  int vx = gl_VertexID % (uTile.x + 1), vy = gl_VertexID / (uTile.x + 1);
+  int tx = gl_InstanceID % uTilesX, ty = gl_InstanceID / uTilesX;
+  int c = min(tx * uTile.x + vx, uSize.x - 1), r = min(ty * uTile.y + vy, uSize.y - 1);
+  float w = texelFetch(uWater, ivec2(c, r), 0).r;
+  float z = w > -1e8 ? w : texelFetch(uHeight, ivec2(c, r), 0).r * uMaxH - 5.0;
+  vWorld = vec3(float(c) * uMpp, float(uSize.y - 1 - r) * uMpp, z);
+  vGrid = vec2(float(c), float(r));
+  gl_Position = uMVP * vec4(vWorld, 1.0);
 }`, `#version 300 es
-precision mediump float;
+precision highp float;
+precision highp int;
+uniform highp sampler2D uHeight;
+uniform highp sampler2D uWater;
+uniform highp usampler2D uBiome;
+uniform ivec2 uSize;
+uniform float uMaxH;
+uniform vec4 uWcol[${BIOMES.length}];
+uniform bool uIsWater[${BIOMES.length}];
+uniform vec3 uSun;
+in vec3 vWorld;
+in vec2 vGrid;
 out vec4 fragColor;
-void main() { fragColor = vec4(40.0 / 255.0, 105.0 / 255.0, 220.0 / 255.0, 0.55); }`);
-  WU = uniforms(waterProg, ["uRect", "uZ", "uMVP"]);
+int wetBiome(ivec2 p) {
+  int b = int(texelFetch(uBiome, p, 0).r);
+  if (b >= ${BIOMES.length} || !uIsWater[b]) return -1;
+  return texelFetch(uWater, p, 0).r > texelFetch(uHeight, p, 0).r * uMaxH ? b : -1;
+}
+void main() {
+  ivec2 cell = clamp(ivec2(floor(vGrid)), ivec2(0), uSize - 2);
+  int b = wetBiome(cell);
+  if (b < 0) b = wetBiome(cell + ivec2(1, 0));
+  if (b < 0) b = wetBiome(cell + ivec2(0, 1));
+  if (b < 0) b = wetBiome(cell + ivec2(1, 1));
+  if (b < 0) discard;
+  vec4 col = uWcol[b];
+  vec3 n = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
+  if (n.z < 0.0) n = -n;
+  float shade = 0.8 + 0.2 * max(0.0, dot(n, uSun));
+  fragColor = vec4(col.rgb * shade, col.a);
+}`);
+  WU = uniforms(waterProg, ["uHeight", "uWater", "uBiome", "uSize", "uTile", "uTilesX", "uMpp", "uMaxH", "uMVP", "uWcol", "uIsWater", "uSun"]);
+  gl.useProgram(waterProg);
+  gl.uniform1i(WU.uHeight, 0); gl.uniform1i(WU.uBiome, 1); gl.uniform1i(WU.uWater, 2);
+  gl.uniform3fv(WU.uSun, SUN);
+  gl.uniform4fv(WU.uWcol, new Float32Array(BIOMES.flatMap((b) => b.wcol ? [b.wcol[0] / 255, b.wcol[1] / 255, b.wcol[2] / 255, b.wcol[3]] : [0, 0, 0, 0])));
+  gl.uniform1iv(WU.uIsWater, new Int32Array(IS_WATER.map((x) => x ? 1 : 0)));
 
   gridVAO = gl.createVertexArray(); gridIBO = gl.createBuffer();
-  waterVAO = gl.createVertexArray();   // no attributes: everything comes from gl_VertexID
   gl.enable(gl.DEPTH_TEST);
   gl.clearColor(0.53, 0.70, 0.86, 1);
   glCv.addEventListener("webglcontextlost", (e) => { e.preventDefault(); $("info").textContent = "3D preview lost its GPU context; reload the page to get it back (your map is autosaved)."; });
@@ -1199,6 +1442,18 @@ function makeTex(internal, w, h) {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   return t;
 }
+// Water surfaces are recomputed for the whole map after each edit (not per brush dab)
+// and uploaded in one go.
+function uploadWater() {
+  if (!texWS) return false;
+  if (waterDirty) computeWater();
+  else if (waterUploaded) return false;
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.bindTexture(gl.TEXTURE_2D, texWS);
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, S.w, S.h, gl.RED, gl.FLOAT, waterRenderSurface());
+  waterUploaded = true;
+  return true;
+}
 // Upload whatever changed since last time. Returns true if anything was uploaded.
 function uploadTerrain() {
   if (!gl) return false;
@@ -1207,8 +1462,9 @@ function uploadTerrain() {
   if (glTooBig) return false;
   if (tile.forW !== mw || tile.forH !== mh) buildTileIndices();
   if (!texH || texW !== mw || texHt !== mh) {
-    if (texH) { gl.deleteTexture(texH); gl.deleteTexture(texB); }
-    texH = makeTex(gl.R32F, mw, mh); texB = makeTex(gl.R8UI, mw, mh); texW = mw; texHt = mh;
+    if (texH) { gl.deleteTexture(texH); gl.deleteTexture(texB); gl.deleteTexture(texWS); }
+    texH = makeTex(gl.R32F, mw, mh); texB = makeTex(gl.R8UI, mw, mh); texWS = makeTex(gl.R32F, mw, mh); texW = mw; texHt = mh;
+    waterUploaded = false;
     d[0] = 0; d[1] = 0; d[2] = mw - 1; d[3] = mh - 1;
   }
   if (d[0] > d[2]) return false;
@@ -1321,7 +1577,7 @@ function statsData() {
     worldX: cx * S.mpp, worldY: cy * S.mpp, chunkM: C * S.mpp,
     vChunk, tChunk: C * C * 2, bChunk: vChunk * S.vbytes,
     vTotal, tTotal: cx * cy * 2, bTotal: vTotal * S.vbytes,
-    data16: w * h * 3, data8: w * h * 2, dataPacked: w * h * 2,
+    data16: w * h * 5, data8: w * h * 3, dataPacked: w * h * 4,   // incl. the water surface grid
   };
 }
 // Hint for sizes whose cells don't divide into whole chunks (still fine: the last
@@ -1351,7 +1607,7 @@ function updateStats() {
     `Whole world as meshes: ${fmtInt(d.tTotal)} triangles, ${fmtBytes(d.bTotal)}\n` +
     `Height steps: ${Math.min(...KEY_SUM.map((s) => Math.round(s * (1 - VMIN))))}..${Math.max(...KEY_SUM.map((s) => Math.round(s * (1 - VMIN))))} per biome ` +
     `(${(S.maxH / Math.min(...KEY_SUM.map((s) => s * (1 - VMIN)))).toFixed(2)} m or finer)\n` +
-    `Exported grid data: ${fmtBytes(d.data16)} (uint16 + biome) / ${fmtBytes(d.data8)} (uint8 + biome or packed)` +
+    `Exported grid data incl. water surface: ${fmtBytes(d.data16)} (uint16) / ${fmtBytes(d.data8)} (uint8) / ${fmtBytes(d.dataPacked)} (packed)` +
     (hint.length ? `\nHint: ${hint.join("; ")}` : "");
   updateGLNote();
 }
@@ -1408,7 +1664,7 @@ async function saveMapPNG() {
   const cv = document.createElement("canvas");
   cv.width = S.w; cv.height = S.h;
   cv.getContext("2d").putImageData(new ImageData(IMG.slice(), S.w, S.h), 0, 0);
-  const png = pngWithText(await canvasPNG(cv), PNG_META_KEY, asciiJSON({ app: "terrain-maker", version: 2, settings: settingsJSON() }));
+  const png = pngWithText(await canvasPNG(cv), PNG_META_KEY, asciiJSON({ app: "terrain-maker", version: MAP_VERSION, settings: settingsJSON() }));
   download(`${cIdent(S.name)}.png`, new Blob([png], { type: "image/png" }));
 }
 // Every biome as a ramp: left = 0 m (30% brightness), right = Max height (key color).
@@ -1456,10 +1712,15 @@ async function openMapPNG(file) {
   if (meta && meta.settings) applySettings(meta.settings);
   allocMap(nw, nh);
   IMG.set(px);
-  const changed = canonicalizeAll();
+  // Maps saved before the 11-biome palette carry version 2 metadata: convert them.
+  const oldPalette = meta && meta.app === "terrain-maker" && !(meta.version >= MAP_VERSION);
+  if (oldPalette) migrateV2Image(IMG);
+  const changed = oldPalette ? 0 : canonicalizeAll();
+  if (oldPalette) decodeAll();
   syncSettingsUI(); touched(true);
   let msg = own ? `Opened ${nw}×${nh} map` : `Resized ${w}×${h} to ${nw}×${nh}`;
   if (meta) msg += " + settings";
+  if (oldPalette) msg += ", converted to the new biome palette";
   if (changed) msg += `, ${fmtInt(changed)} px snapped to palette`;
   toast(msg);
 }
@@ -1510,6 +1771,8 @@ const rgbRow = (c) => c.map((v) => String(v).padStart(3)).join(", ");
 //   "8":      uint8  height[w*h] + uint8 biome[w*h]          (2 bytes per sample)
 //   "packed": uint16 packed[w*h], height in the top 12 bits, biome in the low 4 bits:
 //             h = v >> 4 (0..4095), b = v & 15               (2 bytes per sample, max 16 biomes)
+// Every format also carries the water surface per sample, at the same scale as the
+// height (uint16 0..65535, uint8 0..255, or uint16 0..4095 for packed), 0 where dry.
 const EXPORT_FORMATS = {
   "16":     { id: 0, maxQ: 65535, bytes: 3, label: "uint16 height + uint8 biome" },
   "8":      { id: 1, maxQ: 255,   bytes: 2, label: "uint8 height + uint8 biome" },
@@ -1518,6 +1781,17 @@ const EXPORT_FORMATS = {
 function quantHeights(maxQ) {
   const q = maxQ > 255 ? new Uint16Array(H.length) : new Uint8Array(H.length);
   for (let i = 0; i < H.length; i++) q[i] = Math.round(clamp(H[i], 0, 1) * maxQ);
+  return q;
+}
+// Water surface per sample in height steps; 0 where there is no water (surface <= bed).
+function waterGrid(maxQ) {
+  if (waterDirty) computeWater();
+  const q = maxQ > 255 ? new Uint16Array(H.length) : new Uint8Array(H.length);
+  for (let i = 0; i < H.length; i++) {
+    if (WS[i] === NO_WATER || WS[i] <= H[i] * S.maxH) continue;
+    const v = Math.round(clamp(WS[i] / S.maxH, 0, 1) * maxQ), hq = Math.round(clamp(H[i], 0, 1) * maxQ);
+    if (v > hq) q[i] = v;
+  }
   return q;
 }
 function packedGrid() {
@@ -1531,7 +1805,7 @@ function buildExport(fmt) {
   const F = EXPORT_FORMATS[fmt] || EXPORT_FORMATS["16"];
   const name = cIdent(S.name), w = S.w, h = S.h, d = statsData();
   const packed = fmt === "packed", maxQ = F.maxQ, htype = maxQ > 255 ? "uint16_t" : "uint8_t";
-  const dataBytes = w * h * F.bytes;
+  const wBytes = maxQ > 255 ? 2 : 1, dataBytes = w * h * (F.bytes + wBytes);
   const L = [];
   L.push(`#pragma once`);
   L.push(`#include <stdint.h>`);
@@ -1550,7 +1824,12 @@ function buildExport(fmt) {
   } else {
     L.push(`//   world z = ${name}_height[i] * ${name}_height_scale            (meters, 0..${fmtM(S.maxH)})`);
   }
-  L.push(`// Below ${name}_sea_level is under the sea plane, whatever the biome.`);
+  L.push(`//   water   = ${name}_water[i] * ${name}_height_scale             (meters; 0 = no water)`);
+  L.push(`// Water: where ${name}_water[i] > the sample's height step, the sample is under water`);
+  L.push(`// and depth = (water - height) * ${name}_height_scale. Only water biomes have water:`);
+  L.push(`//   Ocean: sea level. Lake / Pond: each connected patch fills to its spill level (the`);
+  L.push(`//   lowest ground around it, at least ${MIN_LAKE_DEPTH} m deep). River: bed + ${RIVER_DEPTH} m, never rising`);
+  L.push(`//   downstream. Swamp: a ${SWAMP_DEPTH} m film over the bed. An Ocean sample above sea level is dry.`);
   L.push(`//----- Cells + Triangles -----||`);
   L.push(`// Cell (col, row) is the square between samples (col, row) and (col+1, row+1), so`);
   L.push(`// there are (w-1) x (h-1) cells. Its biome is the biome of sample (col, row), its NW corner.`);
@@ -1570,7 +1849,7 @@ function buildExport(fmt) {
   L.push(`//----- Map Image -----||`);
   L.push(`// The map was painted as one color image: hue = biome, brightness = height. The`);
   L.push(`// grids below are already decoded from it. To decode the PNG yourself, per pixel r,g,b:`);
-  L.push(`//   s = r + g + b   (s < 12: Water, height 0)`);
+  L.push(`//   s = r + g + b   (s < 12: Ocean, height 0)`);
   L.push(`//   biome  = the k whose terrain_biome_key_rgb[k] / its channel sum is nearest to`);
   L.push(`//            (r, g, b) / s   (squared distance)`);
   L.push(`//   height = clamp((s / key_sum[biome] - TERRAIN_KEY_MIN_BRIGHTNESS)`);
@@ -1586,15 +1865,21 @@ function buildExport(fmt) {
   L.push(`static const int   ${name}_chunks_x = ${d.chunksX};`);
   L.push(`static const int   ${name}_chunks_y = ${d.chunksY};`);
   L.push(`static const int   ${name}_is_packed = ${packed ? 1 : 0};   // 1: one uint16 per sample (h = v >> 4, biome = v & 15)`);
+  L.push(`static const int   ${name}_has_water = 1;   // ${name}_water[] below: water surface per sample, same scale as height`);
   L.push(``);
   L.push(`//----- Biomes -----||`);
-  L.push(`// Index stored in the biome data. Shared by every map, so new biomes only go at the end.`);
-  L.push(`#ifndef TERRAIN_BIOMES_DEFINED`);
-  L.push(`#define TERRAIN_BIOMES_DEFINED`);
+  L.push(`// Index stored in the biome data. Stable: shared by every map, new biomes only go at the end.`);
+  L.push(`// Ids 0..4 are water biomes (their height is the bed under the water).`);
+  L.push(`#ifndef TERRAIN_BIOMES_V3_DEFINED`);
+  L.push(`#define TERRAIN_BIOMES_V3_DEFINED`);
   L.push(`enum TerrainBiome : uint8_t {`);
-  BIOMES.forEach((b, k) => L.push(`    BIOME_${b.name.toUpperCase()} = ${k},`));
+  BIOMES.forEach((b, k) => L.push(`    BIOME_${b.name.toUpperCase()} = ${k},`.padEnd(24) + `// key #${b.key.map(hex2).join("")}${b.water ? ", water" : ""}`));
   L.push(`    BIOME_COUNT = ${BIOMES.length}`);
   L.push(`};`);
+  L.push(`static const char* const terrain_biome_name[BIOME_COUNT] = {`);
+  L.push(`    ${BIOMES.map((b) => JSON.stringify(b.name)).join(", ")}`);
+  L.push(`};`);
+  L.push(`static const uint8_t terrain_biome_is_water[BIOME_COUNT] = { ${BIOMES.map((b) => b.water ? 1 : 0).join(", ")} };`);
   L.push(`// Game color, rgb 0..255 per biome (bold flat colors; light it in the shader or per face).`);
   L.push(`static const uint8_t terrain_biome_rgb[BIOME_COUNT][3] = {`);
   BIOMES.forEach((b) => L.push(`    { ${rgbRow(b.game)} },   // ${b.name}`));
@@ -1602,6 +1887,10 @@ function buildExport(fmt) {
   L.push(`// Key color in the map image at max height (only needed to decode the PNG).`);
   L.push(`static const uint8_t terrain_biome_key_rgb[BIOME_COUNT][3] = {`);
   BIOMES.forEach((b) => L.push(`    { ${rgbRow(b.key)} },   // ${b.name}`));
+  L.push(`};`);
+  L.push(`// Water surface color + alpha (0..255) in the preview, per water biome (0 for land).`);
+  L.push(`static const uint8_t terrain_biome_water_rgba[BIOME_COUNT][4] = {`);
+  BIOMES.forEach((b) => { const c = b.wcol || [0, 0, 0, 0]; L.push(`    { ${rgbRow([c[0], c[1], c[2], Math.round(c[3] * 255)])} },   // ${b.name}`); });
   L.push(`};`);
   L.push(`#define TERRAIN_KEY_MIN_BRIGHTNESS ${ff(VMIN)}   // brightness of height 0`);
   L.push(`#endif`);
@@ -1617,28 +1906,43 @@ function buildExport(fmt) {
   };
   if (packed) grid("uint16_t", `${name}_packed`, packedGrid(), 16);
   else { grid(htype, `${name}_height`, quantHeights(maxQ), maxQ > 255 ? 16 : 24); grid("uint8_t", `${name}_biome`, B, 32); }
+  grid(htype, `${name}_water`, waterGrid(maxQ), maxQ > 255 ? 16 : 24);
   L.push(``);
   return L.join("\n");
 }
 
 // Binary file (.bin), little-endian, for big maps that are too large to compile as a header:
-//   64-byte header, then the data. See BIN_HEADER in the README for the layout.
+//   64-byte header, a 32-byte entry per biome, the data, then the water grid.
+//   See "Binary file" in the README for the layout.
+const BIN_VERSION = 2, BIN_BIOME_BYTES = 32;
 function buildBin(fmt) {
   const F = EXPORT_FORMATS[fmt] || EXPORT_FORMATS["16"], d = statsData(), n = S.w * S.h;
-  const out = new ArrayBuffer(64 + n * F.bytes), dv = new DataView(out);
+  const wq = waterGrid(F.maxQ), wBytes = F.maxQ > 255 ? 2 : 1;
+  const tableAt = 64, dataAt = tableAt + BIOMES.length * BIN_BIOME_BYTES, waterAt = dataAt + n * F.bytes;
+  const out = new ArrayBuffer(waterAt + n * wBytes), dv = new DataView(out), u8 = new Uint8Array(out);
   [84, 77, 65, 80].forEach((c, k) => dv.setUint8(k, c));          // "TMAP"
-  dv.setUint32(4, 1, true);                                         // version
+  dv.setUint32(4, BIN_VERSION, true);
   dv.setUint32(8, S.w, true); dv.setUint32(12, S.h, true);
   dv.setUint32(16, d.C, true); dv.setUint32(20, d.chunksX, true); dv.setUint32(24, d.chunksY, true);
   dv.setUint32(28, F.id, true);                                     // 0 = u16+u8, 1 = u8+u8, 2 = packed u16
   dv.setFloat32(32, S.mpp, true); dv.setFloat32(36, S.maxH, true);
   dv.setFloat32(40, S.maxH / F.maxQ, true); dv.setFloat32(44, S.sea, true);
   dv.setUint32(48, BIOMES.length, true);
-  const u8 = new Uint8Array(out);
+  dv.setUint32(52, 1, true);                                        // flags: bit 0 = water grid present
+  dv.setUint32(56, dataAt, true);                                   // offset of the grid data
+  dv.setUint32(60, waterAt, true);                                  // offset of the water grid
+  BIOMES.forEach((b, k) => {                                        // biome table
+    const o = tableAt + k * BIN_BIOME_BYTES, wc = b.wcol || [0, 0, 0, 0];
+    u8[o] = k; u8[o + 1] = b.water ? 1 : 0;
+    u8.set(b.game, o + 2); u8.set(b.key, o + 5);
+    u8.set([wc[0], wc[1], wc[2], Math.round(wc[3] * 255)], o + 8);
+    for (let j = 0; j < Math.min(19, b.name.length); j++) u8[o + 12 + j] = b.name.charCodeAt(j);   // NUL padded
+  });
   const putU16 = (arr, at) => { for (let i = 0; i < arr.length; i++) dv.setUint16(at + i * 2, arr[i], true); };
-  if (fmt === "packed") putU16(packedGrid(), 64);
-  else if (fmt === "8") { u8.set(quantHeights(255), 64); u8.set(B, 64 + n); }
-  else { putU16(quantHeights(65535), 64); u8.set(B, 64 + n * 2); }
+  if (fmt === "packed") putU16(packedGrid(), dataAt);
+  else if (fmt === "8") { u8.set(quantHeights(255), dataAt); u8.set(B, dataAt + n); }
+  else { putU16(quantHeights(65535), dataAt); u8.set(B, dataAt + n * 2); }
+  if (wBytes === 2) putU16(wq, waterAt); else u8.set(wq, waterAt);
   return u8;
 }
 
@@ -1674,7 +1978,8 @@ function refreshExport() {
   // A 512 x 512 map is ~1.5 MB of text; phones choke showing that, so show the top only.
   const PREVIEW = 200000;
   $("exportText").value = exportCache.length > PREVIEW ? exportCache.slice(0, exportCache.lastIndexOf("\n", PREVIEW)) + "\n    // ... (preview cut here; Copy and Save .h include everything)\n" : exportCache;
-  $("eNote").textContent = `${cIdent(S.name)}.h, ${fmtBytes(exportCache.length)} of text. Data in the game: ${fmtBytes(S.w * S.h * F.bytes)} (${F.label}); .bin is ${fmtBytes(64 + S.w * S.h * F.bytes)}. ` +
+  const wB = F.maxQ > 255 ? 2 : 1;
+  $("eNote").textContent = `${cIdent(S.name)}.h, ${fmtBytes(exportCache.length)} of text. Data in the game: ${fmtBytes(S.w * S.h * F.bytes)} (${F.label}) + ${fmtBytes(S.w * S.h * wB)} water surface; .bin is ${fmtBytes(64 + BIOMES.length * BIN_BIOME_BYTES + S.w * S.h * (F.bytes + wB))}. ` +
     `The game builds the chunk meshes from the grid.` + (S.w * S.h > PHONE_SLOW_PX ? ` For a map this big, .bin loads faster than compiling the header.` : "");
 }
 
@@ -1692,6 +1997,7 @@ function selectBiome(k) {
   biomeSel = k; updateSwatches();
   if (tool !== "paint" && tool !== "fill") setTool("paint");   // picking a color means: paint with it
 }
+const BIOME_KEYS = "1234567890-";   // keyboard shortcut per biome id
 function buildSwatches() {
   const box = $("swatches"); box.innerHTML = "";
   BIOMES.forEach((b, k) => {
@@ -1699,7 +2005,8 @@ function buildSwatches() {
     // Show the key color as a ramp: dark (0 m) at the bottom, full (max height) at the top.
     const lo = b.key.map((v) => Math.round(v * VMIN));
     el.className = "swatch"; el.style.background = `linear-gradient(rgb(${b.key.join(",")}) 35%, rgb(${lo.join(",")}))`;
-    el.textContent = b.name; el.title = `${k + 1}: ${b.name}`;
+    el.textContent = b.name;
+    el.title = `${b.name} (key ${BIOME_KEYS[k]}, id ${k}${b.water ? ", water" : ""}): key color #${b.key.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
     el.style.color = "#fff"; el.style.textShadow = "0 1px 2px #000";
     el.addEventListener("click", () => selectBiome(k));
     box.appendChild(el);
@@ -1751,7 +2058,7 @@ function updateSizePreview() {
   let t = `${same ? "Now" : "New"}: ${w} × ${h} px at ${mpp} m/px\n` +
     `World:  ${fmtM((w - 1) * mpp)} × ${fmtM((h - 1) * mpp)}\n` +
     `Chunks: ${cx} × ${cy} of ${C} cells (${fmtM(C * mpp)})${hint.length ? "" : ", all full size"}\n` +
-    `Data:   ${fmtBytes(w * h * 3)} (uint16 + biome), ${fmtBytes(w * h * 2)} (packed)\n` +
+    `Data:   ${fmtBytes(w * h * 5)} (uint16 + biome + water), ${fmtBytes(w * h * 4)} (packed + water)\n` +
     `3D:     ${fmtInt(2 * (w - 1) * (h - 1))} triangles at full resolution`;
   if (hint.length) t += `\nHint: ${hint.join("; ")}. Uneven is fine: the last chunks are just narrower.`;
   if (w * h > PHONE_SLOW_PX) t += `\nNote: a map this big is fine on desktop but may be slow on phones.`;
@@ -1800,7 +2107,7 @@ numSetting("setMaxH", "maxH", 1, 4000);
 numSetting("setSea", "sea", 0, 4000);
 numSetting("setVBytes", "vbytes", 4, 64, true);
 $("setChunk").addEventListener("change", (e) => { S.chunk = +e.target.value; touched(false); updateSizePreview(); });
-$("setWater").addEventListener("change", (e) => { S.water = e.target.checked; scheduleSave(); });
+$("setWater").addEventListener("change", (e) => { S.water = e.target.checked; glRedraw = true; scheduleSave(); });
 
 $("bGen").addEventListener("click", () => { if (!$("genSeed").value) $("genSeed").value = 1; openModal("genModal"); });
 $("gmClose").addEventListener("click", closeModals);
@@ -1831,7 +2138,7 @@ $("fImpGrey").addEventListener("click", () => pickFile("image/*", "grey"));
 $("fNew").addEventListener("click", () => {
   pushUndo();
   const h = Math.min(1, (S.sea + 4) / S.maxH);
-  for (let i = 0; i < H.length; i++) setPixel(i, B_GRASS, h, false);
+  for (let i = 0; i < H.length; i++) setPixel(i, B_PLAINS, h, false);
   markAll(); touched(false); closeModals(); toast("New flat map (Undo to go back)");
 });
 
@@ -1855,10 +2162,10 @@ window.addEventListener("keydown", (e) => {
   if ((e.ctrlKey || e.metaKey) && k === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); }
   else if ((e.ctrlKey || e.metaKey) && k === "y") { e.preventDefault(); redo(); }
   else if (k === "f") fitMap();
-  else if (k === "0") mapActualSize();
+  else if (k === "=") mapActualSize();
   else if (k === "[") { brushSize = clamp(brushSize - 1, 1, 64); syncSliders(); viewDirty = true; }
   else if (k === "]") { brushSize = clamp(brushSize + 1, 1, 64); syncSliders(); viewDirty = true; }
-  else if (k >= "1" && k <= String(BIOMES.length)) selectBiome(+k - 1);
+  else if (BIOME_KEYS.includes(k) && k.length === 1) selectBiome(BIOME_KEYS.indexOf(k));
   else if (k === "escape") closeModals();
 });
 
@@ -1900,10 +2207,10 @@ function frame(now) {
   if (gl && glVisible()) {
     // Only the changed rectangle goes to the GPU, so the 3D view follows the brush live.
     const key = [cam.yaw, cam.pitch, cam.dist, ...cam.target, glCv.width, glCv.height, S.water, S.sea, S.mpp, S.maxH, S.w, S.h].join(",");
-    const want = dirtyGL[0] <= dirtyGL[2] || glRedraw || key !== glKey || !texH;
+    const want = dirtyGL[0] <= dirtyGL[2] || glRedraw || key !== glKey || !texH || (!stroke && (waterDirty || !waterUploaded));
     const wait = stroke && glCost > 30 && now - lastGLDraw < glCost * 4;
     if (want && !wait) {
-      uploadTerrain(); glKey = key; glRedraw = false;
+      uploadTerrain(); if (!stroke) uploadWater(); glKey = key; glRedraw = false;
       const sizeKey = S.w + "x" + S.h;
       const timed = (measureGL || measuredFor !== sizeKey) && !stroke;
       drawGL(timed);
@@ -1929,14 +2236,17 @@ function drawGL(timed) {
   gl.bindVertexArray(gridVAO);
   gl.drawElementsInstanced(gl.TRIANGLES, tile.count, gl.UNSIGNED_SHORT, 0, tile.nx * tile.ny);
   if (S.water) {
-    // See-through water drawn last; no depth writes so it never hides the seabed.
-    const W = (S.w - 1) * S.mpp, Hm = (S.h - 1) * S.mpp, m = Math.max(W, Hm) * 0.02;
+    // See-through water drawn last; no depth writes so it never hides the bed.
     gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false);
     gl.useProgram(waterProg);
     gl.uniformMatrix4fv(WU.uMVP, false, mvp);
-    gl.uniform4f(WU.uRect, -m, -m, W + m, Hm + m); gl.uniform1f(WU.uZ, S.sea);
-    gl.bindVertexArray(waterVAO);
-    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    gl.uniform2i(WU.uSize, S.w, S.h);
+    gl.uniform2i(WU.uTile, tile.tx, tile.ty);
+    gl.uniform1i(WU.uTilesX, tile.nx);
+    gl.uniform1f(WU.uMpp, S.mpp); gl.uniform1f(WU.uMaxH, S.maxH);
+    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, texWS);
+    gl.drawElementsInstanced(gl.TRIANGLES, tile.count, gl.UNSIGNED_SHORT, 0, tile.nx * tile.ny);
+    gl.activeTexture(gl.TEXTURE0);
     gl.depthMask(true); gl.disable(gl.BLEND);
   }
   gl.bindVertexArray(null);
@@ -1953,11 +2263,13 @@ function drawGL(timed) {
 // converted once), else a fresh island.
 (async function start() {
   let loaded = false, migrated = false;
+  let newPalette = false;
   try { loaded = loadAutosave(await idbGet(IDB_KEY)); } catch (e) { loaded = false; }
+  if (loaded === "v2") newPalette = true;
   if (!loaded) {
     try {
       const raw = localStorage.getItem(SAVE_KEY);
-      if (raw) { loadProject(JSON.parse(raw)); loaded = true; migrated = true; }
+      if (raw) { newPalette = loadProject(JSON.parse(raw)) !== "v3"; loaded = true; migrated = true; }
     } catch (e) { loaded = false; }
   }
   if (!loaded) {
@@ -1978,7 +2290,8 @@ function drawGL(timed) {
   onResize(); fitMap(); fitCamera(); updateStats();
   if (!localStorage.getItem(SAVE_KEY + ".helped")) openModal("helpModal");
   if (migrated) toast("Loaded your saved map");
-  if (!loaded || migrated) scheduleSave();
+  if (newPalette) toast("Your saved map was converted to the new biome palette (Water → Ocean)");
+  if (!loaded || migrated || newPalette) scheduleSave();
   window.terrainMakerReady = true;
   requestAnimationFrame(frame);
 })();
