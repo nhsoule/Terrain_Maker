@@ -80,6 +80,7 @@ PNGs without Terrain Maker metadata are read with the current palette.
   - **Import grey heightmap** replaces the heights and keeps the biomes.
   - Work also autosaves in the browser (IndexedDB, so 4096 × 4096 maps fit), and older autosaves are picked up on first load.
 - **Export** writes `<name>.h` or `<name>.bin`, always at full resolution.
+- **Player** walks the map in first person, and **Edge fog** fades the map edge into haze (see below).
 
 You can edit the PNG in any pixel editor. Keep it lossless (no JPEG, no smoothing). Off-palette colors snap to the nearest biome hue when the file is opened.
 
@@ -89,6 +90,51 @@ Keys:
 - `1`-`9`, `0`: pick a biome in swatch order (`1` = Ocean ... `9` = Rock, `0` = Forest)
 - `F`: fit the map
 - `=`: 1:1 zoom (stays on `=` because `0` picks Forest)
+- First person: `W` `A` `S` `D` or arrows to move, `Shift` to sprint, `Space` to jump, `Esc` to go back to the orbit view
+
+## First person (Player)
+
+Walk the map at your game's player scale, to judge whether it is big enough.
+
+![First person view](screenshot_fp.png)
+
+1. Press **Player**, then click or tap a spot on the 2D map or in the 3D view. The 3D view becomes the player's eyes, at full resolution.
+2. Look around and walk:
+   - **Desktop:** click the 3D view to capture the mouse for mouse-look (dragging also works). `WASD` or the arrows move, `Shift` sprints, `Space` jumps.
+   - **Touch:** your left thumb is a joystick (push it all the way to sprint). Drag on the right half to look. There is a **Jump** button.
+3. **Esc** or the **Exit first person** button (top right) goes back to the orbit view. **Player** again lets you pick a new spot.
+
+While you walk:
+- **The readout** (top left) shows your position in meters and pixels, the chunk you are in, the ground height and eye height, the biome, any water depth, the distance to the nearest map edge and which edge it is, your compass facing, and the vertical and horizontal FOV.
+- **On the 2D map,** a red dot with your view cone follows you, as it does on the small map in the corner. You can keep painting on the 2D map, and the view updates live.
+- **Chunks on** draws chunk lines on the ground.
+- **Movement:**
+  - Your feet follow the exact exported mesh, using the same two triangles per cell.
+  - The map edge is a wall.
+  - Walking off a ledge drops you with gravity.
+- **Water:**
+  - You wade until the water is deeper than eye height − 0.3 m.
+  - Past that, you swim with your eyes 0.3 m above the surface, at half speed.
+
+**Map settings → First person** (saved with the map and in the PNG):
+
+| Setting | Default | Notes |
+|---|---|---|
+| Eye height | 1.7 m | above the feet |
+| Vertical FOV | 70° | the horizontal equivalent is shown for the 3D view's current shape, 16:9 and 4:3 (70° v = 102° h at 16:9) |
+| Walk speed | 5 m/s | |
+| Sprint multiplier | 2× | Shift, or a fully pushed joystick |
+| Near clip | 0.1 m | |
+| Far clip | 0 = auto | auto is the map's corner-to-corner distance (3094 m for 2048 m), so the whole map is always in view |
+
+## Edge fog
+
+The **Edge fog** button in the 3D view (also in **Map settings**, off by default) fades the terrain and water into a light haze toward the map boundary. That way you don't see a hard edge where the map ends.
+- The fog grows over the last **Fog width** meters (150 m by default), based on each point's distance to the nearest map edge.
+- It stays a little lighter close to you.
+- Beyond the edge, and below the horizon, there is a haze backdrop instead of empty sky.
+- It works in the orbit view and in first person.
+- It is preview only. It is not exported.
 
 ## Export
 
