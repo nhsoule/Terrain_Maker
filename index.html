@@ -103,6 +103,7 @@
   .modal .head { display: flex; align-items: center; gap: 8px; }
   .modal .head span { flex: 1; font-weight: 600; font-size: 16px; }
   .modal .note { font-size: 12px; color: #9a9db0; }
+  .modal .sub { font-size: 12px; font-weight: 600; color: #e0b43a; text-transform: uppercase; letter-spacing: .05em; margin-top: 4px; }
   .modal label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #b9bccb; }
   .modal label > span:first-child { min-width: 9.5em; }
   .modal input[type=text], .modal input[type=number], .modal select {
@@ -196,16 +197,37 @@
   <div class="card">
     <div class="head"><span>Map settings</span><button id="mmClose">Done</button></div>
     <label><span>Name (for export)</span><input id="setName" type="text" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
-    <label><span>Map size (pixels)</span>
-      <select id="setSize"><option>64</option><option>128</option><option>256</option><option>512</option><option>1024</option></select></label>
+    <div class="sub">Map size</div>
+    <label><span>Preset</span><select id="setPreset">
+      <option value="">Custom (type below)</option>
+      <option value="1025,1025,2">1025 × 1025 px @ 2 m = 2048 m, 32 × 32 chunks (recommended)</option>
+      <option value="2049,2049,1">2049 × 2049 px @ 1 m = 2048 m, 64 × 64 chunks</option>
+      <option value="1001,1001,2">1001 × 1001 px @ 2 m = 2000 m world</option>
+      <option value="2001,2001,1">2001 × 2001 px @ 1 m = 2000 m world</option>
+      <option value="1024,1024,2">1024 × 1024 px @ 2 m = 2046 m</option>
+      <option value="2000,2000,1">2000 × 2000 px @ 1 m = 1999 m</option>
+      <option value="513,513,4">513 × 513 px @ 4 m = 2048 m (light)</option>
+      <option value="256,256,2">256 × 256 px @ 2 m = 510 m (small test map)</option>
+    </select></label>
+    <label><span>Width (pixels)</span><input id="setW" type="number" min="16" max="4096" step="1" inputmode="numeric"></label>
+    <label><span>Height (pixels)</span><input id="setH" type="number" min="16" max="4096" step="1" inputmode="numeric"></label>
     <label><span>Meters per pixel</span><input id="setMpp" type="number" min="0.25" max="64" step="0.25" inputmode="decimal"></label>
+    <label><span>Keep the painting by</span><select id="setResize">
+      <option value="scale">Scaling it to the new size</option>
+      <option value="center">Cropping / padding, centered</option>
+      <option value="nw">Cropping / padding from the NW corner</option>
+    </select></label>
+    <div id="sizePreview" class="statbox"></div>
+    <div class="btnrow"><button id="setApply">Apply size</button></div>
+    <div class="note">Each pixel is one vertex, so the world is (pixels − 1) × m/px wide: 1025 px at 2 m is 1024 cells = 2048 m = exactly 32 chunks of 32 cells (1001 px at 2 m is exactly 2000 m). Width and height can differ (16 to 4096 px). Scaling resamples heights smoothly and biomes by nearest pixel; crop / pad keeps every pixel 1:1 and fills new area with sea floor (Water, 0 m). Undo brings the old size back.</div>
+    <div class="sub">Terrain</div>
     <label><span>Max height (m)</span><input id="setMaxH" type="number" min="1" max="4000" step="1" inputmode="decimal"></label>
     <label><span>Sea level (m)</span><input id="setSea" type="number" min="0" max="4000" step="0.5" inputmode="decimal"></label>
     <label><span>Chunk size (pixels)</span>
-      <select id="setChunk"><option>8</option><option>16</option><option>32</option><option>64</option><option>128</option></select></label>
+      <select id="setChunk"><option>8</option><option>16</option><option>32</option><option>64</option><option>128</option><option>256</option></select></label>
     <label><span>Vertex size (bytes)</span><input id="setVBytes" type="number" min="4" max="64" step="1" inputmode="numeric"></label>
     <label><span>Show water plane</span><input id="setWater" type="checkbox"></label>
-    <div class="note">Changing the map size resamples the image (Undo brings it back). Brightness is height 0..1 scaled by Max height, so changing Max height stretches the whole map. Vertex size only feeds the memory numbers below (your engine's vertex format).</div>
+    <div class="note">Brightness is height 0..1 scaled by Max height, so changing Max height stretches the whole map. Vertex size only feeds the memory numbers below (your engine's vertex format).</div>
     <div id="mapStats" class="statbox"></div>
   </div>
 </div>
@@ -245,7 +267,7 @@
     <div class="note">Your map autosaves in this browser. The map PNG <b>is</b> the map: hue = biome, brightness = height. It also carries the map settings (m/px, max height, sea, chunk) inside the PNG, so opening it here restores everything. You can paint it in any pixel editor too (keep it lossless: PNG, no JPEG, no smoothing).</div>
     <div class="btnrow"><button id="fSavePng">Save map PNG</button><button id="fOpen" class="alt">Open map (PNG or .json)</button></div>
     <div class="btnrow"><button id="fPalette" class="alt">Save palette PNG</button><button id="fImpGrey" class="alt">Import grey heightmap</button></div>
-    <div class="note">Open: a square PNG of 16..1024 px becomes the map at its own size; other images are resized to the current size. Colors that aren't exact palette colors snap to the nearest biome hue (their brightness is kept). Older Terrain Maker v1 .json projects open too. Grey heightmap: any image, brighter = higher; it replaces the heights and keeps the biomes.</div>
+    <div class="note">Open: a PNG of 16..4096 px on each side becomes the map at its own size (any shape); bigger images are resized to the current size. Colors that aren't exact palette colors snap to the nearest biome hue (their brightness is kept). Older Terrain Maker v1 .json projects open too. Grey heightmap: any image, brighter = higher; it replaces the heights and keeps the biomes.</div>
     <div class="btnrow"><button id="fNew" class="alt">New flat map</button></div>
     <input id="fileIn" type="file" class="hide">
   </div>
@@ -257,10 +279,11 @@
     <span>Export C header</span>
     <button id="eCopy">Copy</button>
     <button id="eSave" class="alt">Save .h</button>
+    <button id="eSaveBin" class="alt">Save .bin</button>
     <button id="eClose" class="alt">Close</button>
   </div>
-  <label><span>Height storage</span>
-    <select id="eBits"><option value="16">uint16 (65536 levels)</option><option value="8">uint8 (256 levels)</option></select></label>
+  <label><span>Data format</span>
+    <select id="eBits"><option value="16">uint16 height + uint8 biome (65536 levels, 3 B/sample)</option><option value="8">uint8 height + uint8 biome (256 levels, 2 B/sample)</option><option value="packed">packed uint16: 12-bit height | 4-bit biome (4096 levels, 2 B/sample)</option></select></label>
   <div id="eNote" class="note"></div>
   <textarea id="exportText" readonly spellcheck="false"></textarea>
 </div>
@@ -268,7 +291,7 @@
 <!-- ----- Help -----|| -->
 <div id="helpModal" class="modal">
   <div class="card">
-    <div class="head"><span>Terrain Maker v2</span><button id="hmClose">Got it</button></div>
+    <div class="head"><span>Terrain Maker</span><button id="hmClose">Got it</button></div>
     <p>The world map is <b>one color image</b>. Each pixel is one terrain vertex:</p>
     <ul>
       <li><b>Hue = biome.</b> Every biome has a key color (the swatches). A pixel belongs to the biome whose key color has the closest hue, no matter how bright or dark the pixel is.</li>
@@ -283,13 +306,13 @@
       <li><b>Raise / Lower</b> brighten or darken the pixels and keep their hue. <b>Smooth</b> blurs heights. <b>Flatten</b> pulls toward the height where the stroke started, which is good for plateaus and build sites.</li>
       <li><b>Biome</b> repaints the hue with the selected swatch and keeps each pixel's brightness (height). <b>Fill</b> does that for a connected area of one biome. <b>Pick</b> takes the biome under your finger.</li>
       <li><b>Generate</b>: seeded noise as a rough start. <b>Auto biome</b>: hues from height and slope.</li>
-      <li><b>Map</b>: size, meters per pixel, max height, sea level and chunk size. The top-left line shows the world size and what the meshes will cost.</li>
-      <li><b>3D</b>: the live low-poly preview, flat shaded, drawn with each biome's game color.</li>
-      <li><b>File</b>: save / open the map PNG, the palette, a grey heightmap. <b>Export</b>: a C header with compact height + biome grids and the palette for your game.</li>
+      <li><b>Map</b>: width and height in pixels, meters per pixel (with presets for a 2000 m world), max height, sea level and chunk size. The top-left line shows the world size and what the meshes will cost.</li>
+      <li><b>3D</b>: the live low-poly preview at <b>full resolution</b> (one vertex per pixel, exactly what you export), flat shaded, drawn with each biome's game color. Very big maps (millions of pixels) can be slow on phones; desktops handle 2000 × 2000 fine.</li>
+      <li><b>File</b>: save / open the map PNG, the palette, a grey heightmap. <b>Export</b>: a C header (or a compact <code>.bin</code> for big maps) with the full-resolution grid and the palette for your game. Formats: uint16 height + uint8 biome, uint8 height + uint8 biome, or packed uint16 (height in the top 12 bits, biome in the low 4: <code>h = v &gt;&gt; 4</code>, <code>b = v &amp; 15</code>).</li>
     </ul>
     <h3>Controls</h3>
     <ul>
-      <li>Map: one finger / left mouse paints. Two fingers pan and pinch-zoom. Mouse: right or middle drag pans, wheel zooms.</li>
+      <li>Map: one finger / left mouse paints. Two fingers pan and pinch-zoom. Mouse: right or middle drag pans, wheel zooms. Zoom in far enough and a pixel grid appears, so you can paint single pixels (brush size 1). <b>F</b> fits the map, <b>0</b> zooms to 1 screen pixel per map pixel.</li>
       <li>3D: one finger / left drag orbits, two fingers pan and zoom. Mouse: right drag pans, wheel zooms.</li>
       <li>Keys: Ctrl+Z / Ctrl+Y undo / redo, [ and ] brush size, 1-7 pick a biome.</li>
     </ul>
@@ -338,10 +361,13 @@ const VMIN = 0.3;
 
 const SUN = norm3([0.3, 0.5, 0.8]);    // same fixed sun as Vert Modeler
 const UNDO_MAX = 24;
+const UNDO_BUDGET = 384 * 1048576;     // bytes of undo snapshots kept (big maps get fewer steps)
+const SIZE_MIN = 16, SIZE_MAX = 4096;  // map width / height limits in pixels
 const SAVE_KEY = "terrainMaker.v2";
 const OLD_SAVE_SUFFIX = ".terrainMaker.v1";   // v1 autosave key ends with this (migrated once)
 const PNG_META_KEY = "TerrainMaker";          // tEXt chunk in saved PNGs with the settings
-const PREVIEW_MAX_CELLS = 256;         // the 3D preview skips pixels on bigger maps
+const IDB_NAME = "terrainMaker", IDB_STORE = "maps", IDB_KEY = "autosave";   // autosave (big maps)
+const PHONE_SLOW_PX = 1100000;         // above this many pixels, warn that phones may be slow
 
 //----- Small Math -----||
 function clamp(x, a, b) { return x < a ? a : x > b ? b : x; }
@@ -463,8 +489,9 @@ function encodePixel(px, o, biome, h, dither) {
 //----- App State -----||
 const S = {
   name: "world",
-  size: 256,          // map is size x size pixels (= vertices)
-  mpp: 2,             // meters per pixel
+  w: 1025,            // map width in pixels (= vertices west to east)
+  h: 1025,            // map height in pixels (= vertices north to south)
+  mpp: 2,             // meters per pixel, so the world is (w-1)*mpp x (h-1)*mpp meters
   maxH: 120,          // height 1.0 = this many meters
   sea: 12,            // sea level in meters
   chunk: 32,          // chunk edge in pixels (cells)
@@ -473,25 +500,41 @@ const S = {
 };
 // IMG is the map: RGBA, row-major, row 0 = north (top). H and B are decoded from it
 // (kept in sync by setPixel / decodeAll) so tools, 3D and export don't re-decode.
-let IMG = new Uint8ClampedArray(S.size * S.size * 4);
-let H = new Float32Array(S.size * S.size);   // height 0..1 per pixel (decoded)
-let B = new Uint8Array(S.size * S.size);     // biome index per pixel (decoded)
+let IMG = new Uint8ClampedArray(S.w * S.h * 4);
+let H = new Float32Array(S.w * S.h);   // height 0..1 per pixel (decoded)
+let B = new Uint8Array(S.w * S.h);     // biome index per pixel (decoded)
 let tool = "raise";
 let biomeSel = B_GRASS;
 let brushSize = 10, brushStr = 0.5;
 let showChunks = true;
-let mapDirty = true, meshDirty = true, viewDirty = true;
+let viewDirty = true, glRedraw = true;
 
-function allocMap(n) {
-  S.size = n;
-  IMG = new Uint8ClampedArray(n * n * 4); H = new Float32Array(n * n); B = new Uint8Array(n * n);
+//----- Dirty Rectangles -----||
+// Painting only touches a few pixels, so the 2D canvas and the 3D height / biome
+// textures only re-upload the rectangle that changed. Each consumer has its own rect
+// (x0, y0, x1, y1 inclusive; x0 > x1 means clean).
+const dirty2D = [0, 0, -1, -1], dirtyGL = [0, 0, -1, -1];
+function markDirty(x0, y0, x1, y1) {
+  for (const d of [dirty2D, dirtyGL]) {
+    if (d[0] > d[2]) { d[0] = x0; d[1] = y0; d[2] = x1; d[3] = y1; }
+    else { d[0] = Math.min(d[0], x0); d[1] = Math.min(d[1], y0); d[2] = Math.max(d[2], x1); d[3] = Math.max(d[3], y1); }
+  }
+  viewDirty = true; glRedraw = true;
+}
+function markAll() { markDirty(0, 0, S.w - 1, S.h - 1); }
+
+function allocMap(w, h) {
+  S.w = w; S.h = h;
+  IMG = new Uint8ClampedArray(w * h * 4); H = new Float32Array(w * h); B = new Uint8Array(w * h);
+  markAll();
 }
 function setPixel(i, biome, h, dither) {
   B[i] = biome;
   H[i] = encodePixel(IMG, i * 4, biome, h, dither);
 }
 function decodeAll() {
-  for (let i = 0, n = S.size * S.size; i < n; i++) {
+  markAll();
+  for (let i = 0, n = S.w * S.h; i < n; i++) {
     const o = i * 4, b = nearestBiome(IMG[o], IMG[o + 1], IMG[o + 2]);
     B[i] = b; H[i] = decodeHeight(IMG[o], IMG[o + 1], IMG[o + 2], b);
     IMG[o + 3] = 255;
@@ -503,7 +546,7 @@ function canonicalizeAll() {
   decodeAll();
   let changed = 0;
   const t = new Uint8ClampedArray(4);
-  for (let i = 0, n = S.size * S.size; i < n; i++) {
+  for (let i = 0, n = S.w * S.h; i < n; i++) {
     const o = i * 4;
     encodePixel(t, 0, B[i], H[i], false);
     if (t[0] !== IMG[o] || t[1] !== IMG[o + 1] || t[2] !== IMG[o + 2]) changed++;
@@ -512,22 +555,25 @@ function canonicalizeAll() {
   return changed;
 }
 // Build the image from separate height + biome arrays (generate, v1 migration).
-function encodeFrom(h, b) { for (let i = 0; i < h.length; i++) setPixel(i, b[i], h[i], false); }
+function encodeFrom(h, b) { for (let i = 0; i < h.length; i++) setPixel(i, b[i], h[i], false); markAll(); }
 
 //----- Undo + Autosave -----||
-// Each undo step is a copy of the image (1 MB at 512 x 512); H and B are decoded again
+// Each undo step is a copy of the image (4 MB at 1001 x 1001); H and B are decoded again
 // on restore. Simple, and makes resize / generate / import undoable like a stroke.
+// Big maps keep fewer steps so the snapshots stay under UNDO_BUDGET bytes.
 const undoStack = [], redoStack = [];
-function snapshot() { return { size: S.size, img: IMG.slice() }; }
+function undoMax() { return clamp(Math.floor(UNDO_BUDGET / (S.w * S.h * 4)), 3, UNDO_MAX); }
+function snapshot() { return { w: S.w, h: S.h, mpp: S.mpp, img: IMG.slice() }; }
 function restore(s) {
-  const resized = s.size !== S.size;
-  if (resized) allocMap(s.size);
+  const resized = s.w !== S.w || s.h !== S.h || s.mpp !== S.mpp;
+  if (s.w !== S.w || s.h !== S.h) allocMap(s.w, s.h);
+  S.mpp = s.mpp;
   IMG = s.img; decodeAll();
   touched(resized);
 }
 function pushUndo() {
   undoStack.push(snapshot());
-  if (undoStack.length > UNDO_MAX) undoStack.shift();
+  while (undoStack.length > undoMax()) undoStack.shift();
   redoStack.length = 0;
   updateUndoButtons();
 }
@@ -537,8 +583,8 @@ function updateUndoButtons() { $("bUndo").disabled = !undoStack.length; $("bRedo
 
 // Something changed: redraw the map, rebuild the 3D mesh, save soon.
 function touched(resized) {
-  mapDirty = true; meshDirty = true; viewDirty = true;
-  if (resized) { syncSizeOption(); fitMap(); fitCamera(); }
+  viewDirty = true; glRedraw = true;
+  if (resized) { syncSizeUI(); fitMap(); fitCamera(); }
   updateStats();
   scheduleSave();
 }
@@ -568,8 +614,8 @@ function applySettings(st) {
 }
 // Project = settings + the image as raw RGB (the autosave uses this too).
 function projectJSON() {
-  const n = S.size, rgb = new Uint8Array(n * n * 3);
-  for (let i = 0; i < n * n; i++) { rgb[i * 3] = IMG[i * 4]; rgb[i * 3 + 1] = IMG[i * 4 + 1]; rgb[i * 3 + 2] = IMG[i * 4 + 2]; }
+  const n = S.w * S.h, rgb = new Uint8Array(n * 3);
+  for (let i = 0; i < n; i++) { rgb[i * 3] = IMG[i * 4]; rgb[i * 3 + 1] = IMG[i * 4 + 1]; rgb[i * 3 + 2] = IMG[i * 4 + 2]; }
   return {
     app: "terrain-maker", version: 2,
     settings: settingsJSON(),
@@ -582,55 +628,107 @@ function projectJSON() {
 function loadProject(p) {
   if (!p || typeof p !== "object" || !/terrain-maker$/.test(String(p.app))) throw new Error("Not a Terrain Maker project");
   const st = p.settings || {};
-  const size = st.size | 0;
-  if (!(size >= 8 && size <= 2048)) throw new Error("Bad map size");
+  const w = (st.w | 0) || (st.size | 0), h = (st.h | 0) || (st.size | 0), size = w;
+  if (!(w >= 8 && w <= SIZE_MAX && h >= 8 && h <= SIZE_MAX)) throw new Error("Bad map size");
   if (p.version === 2 && p.image_rgb_b64) {
     const rgb = b64ToBytes(p.image_rgb_b64);
-    if (rgb.length !== size * size * 3) throw new Error("Data does not match the map size");
-    applySettings(st); allocMap(size);
-    for (let i = 0; i < size * size; i++) { IMG[i * 4] = rgb[i * 3]; IMG[i * 4 + 1] = rgb[i * 3 + 1]; IMG[i * 4 + 2] = rgb[i * 3 + 2]; IMG[i * 4 + 3] = 255; }
+    if (rgb.length !== w * h * 3) throw new Error("Data does not match the map size");
+    applySettings(st); allocMap(w, h);
+    for (let i = 0; i < w * h; i++) { IMG[i * 4] = rgb[i * 3]; IMG[i * 4 + 1] = rgb[i * 3 + 1]; IMG[i * 4 + 2] = rgb[i * 3 + 2]; IMG[i * 4 + 3] = 255; }
     decodeAll();
     return "v2";
   }
   if (p.height_u16_le_b64 && p.biome_u8_b64) {
     const hb = b64ToBytes(p.height_u16_le_b64), bb = b64ToBytes(p.biome_u8_b64);
-    if (hb.length !== size * size * 2 || bb.length !== size * size) throw new Error("Data does not match the map size");
+    if (w !== h || hb.length !== size * size * 2 || bb.length !== size * size) throw new Error("Data does not match the map size");
     const h16 = new Uint16Array(hb.buffer, hb.byteOffset, size * size);
-    const h = new Float32Array(size * size);
-    for (let i = 0; i < h.length; i++) h[i] = h16[i] / 65535;
+    const hf = new Float32Array(size * size);
+    for (let i = 0; i < hf.length; i++) hf[i] = h16[i] / 65535;
     for (let i = 0; i < bb.length; i++) if (bb[i] >= BIOMES.length) bb[i] = B_GRASS;
-    applySettings(st); allocMap(size);
-    encodeFrom(h, bb);
+    applySettings(st); allocMap(size, size);
+    encodeFrom(hf, bb);
     return "v1";
   }
   throw new Error("Unknown project version");
 }
 
+// Autosave goes to IndexedDB: it stores the raw image (no base64) and has room for
+// 4096 x 4096 maps, where localStorage stops at a few MB. localStorage is only read, to
+// pick up saves from older versions.
+function idbOpen() {
+  return new Promise((res, rej) => {
+    if (!window.indexedDB) { rej(new Error("no IndexedDB")); return; }
+    const r = indexedDB.open(IDB_NAME, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore(IDB_STORE);
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
+}
+let idbP = null;
+function idb() { return idbP || (idbP = idbOpen()); }
+async function idbPut(key, val) {
+  const db = await idb();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(IDB_STORE, "readwrite");
+    tx.objectStore(IDB_STORE).put(val, key);   // structured clone: copies IMG right here
+    tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error);
+  });
+}
+async function idbGet(key) {
+  const db = await idb();
+  return new Promise((res, rej) => {
+    const r = db.transaction(IDB_STORE, "readonly").objectStore(IDB_STORE).get(key);
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
+}
 let saveTimer = 0;
 function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 800); }
-function saveNow() {
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify(projectJSON())); }
-  catch (e) { toast("Autosave failed (storage full?). Use File > Save map PNG."); }
+async function saveNow() {
+  try { await idbPut(IDB_KEY, { app: "terrain-maker", version: 2, settings: settingsJSON(), w: S.w, h: S.h, img: IMG }); }
+  catch (e) { toast("Autosave failed. Use File > Save map PNG."); }
+}
+// Loads the IndexedDB autosave; false if there is none or it doesn't fit.
+function loadAutosave(a) {
+  if (!a || a.app !== "terrain-maker" || !(a.img instanceof Uint8ClampedArray)) return false;
+  const w = a.w | 0, h = a.h | 0;
+  if (!(w >= SIZE_MIN && w <= SIZE_MAX && h >= SIZE_MIN && h <= SIZE_MAX) || a.img.length !== w * h * 4) return false;
+  applySettings(a.settings); allocMap(w, h);
+  IMG = a.img; decodeAll();
+  return true;
 }
 
 //----- Map Resize -----||
 // Bilinear for height (smooth), nearest for biome (biomes can't be blended), then
 // re-encoded, so the image stays canonical.
-function resampleTo(n) {
-  const o = S.size, oh = H, ob = B;
-  const nh = new Float32Array(n * n), nb = new Uint8Array(n * n);
-  const k = (o - 1) / Math.max(1, n - 1);
-  for (let r = 0; r < n; r++) {
-    for (let c = 0; c < n; c++) {
-      const x = c * k, y = r * k;
-      const x0 = Math.floor(x), y0 = Math.floor(y), x1 = Math.min(o - 1, x0 + 1), y1 = Math.min(o - 1, y0 + 1);
-      const tx = x - x0, ty = y - y0;
-      const a = oh[y0*o + x0], b = oh[y0*o + x1], cc = oh[y1*o + x0], d = oh[y1*o + x1];
-      nh[r*n + c] = (a + (b - a) * tx) * (1 - ty) + (cc + (d - cc) * tx) * ty;
-      nb[r*n + c] = ob[Math.round(y) * o + Math.round(x)];
+// Corner pixels map to corner pixels, so the painting stretches to the new edges.
+function resampleTo(nw, nh) {
+  const ow = S.w, oh = S.h, oH = H, oB = B;
+  const hh = new Float32Array(nw * nh), bb = new Uint8Array(nw * nh);
+  const kx = (ow - 1) / Math.max(1, nw - 1), ky = (oh - 1) / Math.max(1, nh - 1);
+  for (let r = 0; r < nh; r++) {
+    const y = r * ky, y0 = Math.min(oh - 1, Math.floor(y)), y1 = Math.min(oh - 1, y0 + 1), ty = y - y0, yr = Math.min(oh - 1, Math.round(y));
+    for (let c = 0; c < nw; c++) {
+      const x = c * kx, x0 = Math.min(ow - 1, Math.floor(x)), x1 = Math.min(ow - 1, x0 + 1), tx = x - x0;
+      const a = oH[y0*ow + x0], b = oH[y0*ow + x1], cc = oH[y1*ow + x0], d = oH[y1*ow + x1];
+      hh[r*nw + c] = (a + (b - a) * tx) * (1 - ty) + (cc + (d - cc) * tx) * ty;
+      bb[r*nw + c] = oB[yr * ow + Math.min(ow - 1, Math.round(x))];
     }
   }
-  allocMap(n); encodeFrom(nh, nb);
+  allocMap(nw, nh); encodeFrom(hh, bb);
+}
+// Keep every pixel 1:1: the old image is placed at an offset (centered, or at the NW
+// corner) and whatever falls outside is cut; new area is sea floor (Water, 0 m).
+function cropPadTo(nw, nh, anchor) {
+  const ow = S.w, oh = S.h, old = IMG;
+  const dx = anchor === "center" ? Math.floor((nw - ow) / 2) : 0, dy = anchor === "center" ? Math.floor((nh - oh) / 2) : 0;
+  allocMap(nw, nh);
+  const fill = new Uint8ClampedArray(4); encodePixel(fill, 0, B_WATER, 0, false);
+  for (let i = 0; i < nw * nh; i++) IMG.set(fill, i * 4);
+  for (let r = 0; r < oh; r++) {
+    const nr = r + dy; if (nr < 0 || nr >= nh) continue;
+    const c0 = Math.max(0, -dx), c1 = Math.min(ow, nw - dx);
+    if (c1 > c0) IMG.set(old.subarray((r * ow + c0) * 4, (r * ow + c1) * 4), (nr * nw + c0 + dx) * 4);
+  }
+  decodeAll();
 }
 
 //----- Brushes -----||
@@ -640,12 +738,16 @@ function resampleTo(n) {
 // (height kept).
 let stroke = null;    // { tool, last: [x, y], target }
 
+// Brush size is a radius in pixels (from the centre of the pixel under the pointer):
+// size 1 paints exactly one pixel.
 function stamp(cx, cy) {
-  const n = S.size, r = brushSize, t = stroke.tool;
-  const x0 = Math.max(0, Math.floor(cx - r)), x1 = Math.min(n - 1, Math.ceil(cx + r));
-  const y0 = Math.max(0, Math.floor(cy - r)), y1 = Math.min(n - 1, Math.ceil(cy + r));
+  const mw = S.w, mh = S.h, r = brushSize, t = stroke.tool;
+  if (r <= 2) { cx = Math.round(cx); cy = Math.round(cy); }   // tiny brushes snap to pixels
+  const x0 = Math.max(0, Math.floor(cx - r)), x1 = Math.min(mw - 1, Math.ceil(cx + r));
+  const y0 = Math.max(0, Math.floor(cy - r)), y1 = Math.min(mh - 1, Math.ceil(cy + r));
   if (x0 > x1 || y0 > y1) return;
-  const rr = Math.max(0.5, r);
+  markDirty(x0, y0, x1, y1);
+  const rr = Math.max(0.5, r - 0.5);
   // Smooth reads from a copy so the result doesn't depend on the loop direction.
   let src = null, sw = 0;
   if (t === "smooth") {
@@ -653,13 +755,13 @@ function stamp(cx, cy) {
     src = new Float32Array(sw * (y1 - y0 + 3));
     for (let y = y0 - 1; y <= y1 + 1; y++)
       for (let x = x0 - 1; x <= x1 + 1; x++)
-        src[(y - y0 + 1) * sw + (x - x0 + 1)] = H[clamp(y, 0, n - 1) * n + clamp(x, 0, n - 1)];
+        src[(y - y0 + 1) * sw + (x - x0 + 1)] = H[clamp(y, 0, mh - 1) * mw + clamp(x, 0, mw - 1)];
   }
   for (let y = y0; y <= y1; y++) {
     for (let x = x0; x <= x1; x++) {
       const d = Math.hypot(x - cx, y - cy);
       if (d > rr) continue;
-      const i = y * n + x;
+      const i = y * mw + x;
       if (t === "paint") { if (B[i] !== biomeSel) setPixel(i, biomeSel, H[i], false); continue; }
       const fall = 1 - smooth01(d / rr);          // soft edge
       let h = H[i];
@@ -682,32 +784,30 @@ function stamp(cx, cy) {
 
 function strokeBegin(x, y) {
   const t = tool;
-  const n = S.size, xi = clamp(Math.round(x), 0, n - 1), yi = clamp(Math.round(y), 0, n - 1);
+  const mw = S.w, xi = clamp(Math.round(x), 0, S.w - 1), yi = clamp(Math.round(y), 0, S.h - 1);
   if (t === "pick") {
-    const i = yi * n + xi;
+    const i = yi * mw + xi;
     biomeSel = B[i]; updateSwatches();
     toast(`${BIOMES[biomeSel].name}, ${fmtM(+(H[i] * S.maxH).toFixed(1))}`);
     return;
   }
   if (t === "fill") { pushUndo(); floodFill(xi, yi, biomeSel); touched(false); return; }
   pushUndo();
-  stroke = { tool: t, last: [x, y], target: H[yi * n + xi] };
+  stroke = { tool: t, last: [x, y], target: H[yi * mw + xi] };
   if (t === "flatten") toast("Flatten to " + fmtM(+(stroke.target * S.maxH).toFixed(1)));
   stamp(x, y);
-  mapDirty = true; meshDirty = true;
 }
 function strokeMove(x, y) {
   if (!stroke) return;
   const [lx, ly] = stroke.last;
   const dist = Math.hypot(x - lx, y - ly);
-  const step = Math.max(0.5, brushSize * 0.3);
+  const step = Math.max(0.35, brushSize * 0.3);
   if (dist < step) return;
   const k = Math.floor(dist / step);
   for (let s = 1; s <= k; s++) stamp(lx + (x - lx) * s / k, ly + (y - ly) * s / k);
   stroke.last = [x, y];
-  mapDirty = true; meshDirty = true;
 }
-function strokeEnd() { if (!stroke) return; stroke = null; touched(false); }
+function strokeEnd() { if (!stroke) return; stroke = null; measureGL = true; touched(false); }
 // A second finger landed mid-stroke: that was the start of a pinch, so undo the stroke.
 function strokeCancel() {
   if (!stroke) return;
@@ -720,34 +820,38 @@ function strokeCancel() {
 // 4-way flood fill of the connected area that has the same biome as the start pixel.
 // Only the hue changes; every pixel keeps its brightness (height).
 function floodFill(x, y, val) {
-  const n = S.size, from = B[y * n + x];
+  const mw = S.w, mh = S.h, from = B[y * mw + x];
   if (from === val) return;
-  const stack = [y * n + x];
+  const stack = [y * mw + x];
+  let x0 = x, y0 = y, x1 = x, y1 = y;
   while (stack.length) {
     const i = stack.pop();
     if (B[i] !== from) continue;
     setPixel(i, val, H[i], false);
-    const cx = i % n, cy = (i / n) | 0;
+    const cx = i % mw, cy = (i / mw) | 0;
+    if (cx < x0) x0 = cx; if (cx > x1) x1 = cx; if (cy < y0) y0 = cy; if (cy > y1) y1 = cy;
     if (cx > 0) stack.push(i - 1);
-    if (cx < n - 1) stack.push(i + 1);
-    if (cy > 0) stack.push(i - n);
-    if (cy < n - 1) stack.push(i + n);
+    if (cx < mw - 1) stack.push(i + 1);
+    if (cy > 0) stack.push(i - mw);
+    if (cy < mh - 1) stack.push(i + mw);
   }
+  markDirty(x0, y0, x1, y1);
 }
 
 //----- Generate Base -----||
 // Fills a height array (0..1); the caller encodes it with the current (or auto) biomes.
 function generate(seed, scale, rough, island, terraces) {
-  const n = S.size, out = new Float32Array(n * n);
+  const mw = S.w, mh = S.h, n = Math.max(mw, mh), out = new Float32Array(mw * mh);
   // Feature size is a fraction of the map, so the same seed looks alike at any map size.
+  // Bigger maps get more octaves so the extra pixels get extra detail.
   const freq = 1 / (scale * n * 0.5);
-  const oct = 5;
-  for (let r = 0; r < n; r++) {
-    for (let c = 0; c < n; c++) {
+  const oct = clamp(Math.round(Math.log2(n)) - 3, 5, 9);
+  for (let r = 0; r < mh; r++) {
+    for (let c = 0; c < mw; c++) {
       let h = fbm(c * freq, r * freq, seed, oct, rough);
       h = clamp((h - 0.25) / 0.5, 0, 1);                 // stretch to use the full range
       if (island) {
-        const dx = c / (n - 1) * 2 - 1, dy = r / (n - 1) * 2 - 1;
+        const dx = c / (mw - 1) * 2 - 1, dy = r / (mh - 1) * 2 - 1;
         const d = Math.min(1, Math.hypot(dx, dy) / 1.05);
         h = h * (1 - d * d * d) * 0.9 + 0.1 * (1 - d) - 0.06;
       }
@@ -757,7 +861,7 @@ function generate(seed, scale, rough, island, terraces) {
         const t = h * terraces, f = Math.floor(t), fr = t - f;
         h = (f + smooth01((fr - 0.7) / 0.3)) / terraces;  // flat steps with short ramps
       }
-      out[r * n + c] = h;
+      out[r * mw + c] = h;
     }
   }
   return out;
@@ -765,7 +869,7 @@ function generate(seed, scale, rough, island, terraces) {
 
 //----- Auto Biomes -----||
 function slopeDegOf(h, c, r) {
-  const n = S.size, z = (x, y) => h[clamp(y, 0, n - 1) * n + clamp(x, 0, n - 1)] * S.maxH;
+  const mw = S.w, mh = S.h, z = (x, y) => h[clamp(y, 0, mh - 1) * mw + clamp(x, 0, mw - 1)] * S.maxH;
   const dzdx = (z(c + 1, r) - z(c - 1, r)) / (2 * S.mpp);
   const dzdy = (z(c, r - 1) - z(c, r + 1)) / (2 * S.mpp);
   return Math.atan(Math.hypot(dzdx, dzdy)) * 180 / Math.PI;
@@ -773,10 +877,10 @@ function slopeDegOf(h, c, r) {
 function slopeDeg(c, r) { return slopeDegOf(H, c, r); }
 // Biome for every pixel from a height array (0..1). Returns a new biome array.
 function autoBiomes(h, beach, rockDeg, snowPct, forestPct) {
-  const n = S.size, seed = 9173, out = new Uint8Array(n * n);
-  for (let r = 0; r < n; r++) {
-    for (let c = 0; c < n; c++) {
-      const i = r * n + c, z = h[i] * S.maxH;
+  const mw = S.w, mh = S.h, seed = 9173, out = new Uint8Array(mw * mh);
+  for (let r = 0; r < mh; r++) {
+    for (let c = 0; c < mw; c++) {
+      const i = r * mw + c, z = h[i] * S.maxH;
       let b;
       if (z < S.sea) b = B_WATER;
       else if (z < S.sea + beach) b = B_SAND;
@@ -800,44 +904,68 @@ function autoBiomes(h, beach, rockDeg, snowPct, forestPct) {
 // as-is (no shading), scaled with smoothing off so every pixel stays a crisp square.
 const mapCv = $("map"), mctx = mapCv.getContext("2d");
 const off = document.createElement("canvas"), octx = off.getContext("2d");
-let mapView = { zoom: 1, ox: 0, oy: 0 };    // screen px per map px, and map origin on screen
+let mapView = { zoom: 1, ox: 0, oy: 0 };    // CSS px per map px, and map origin on screen
+let mapImageData = null;                     // wraps IMG (no copy) for putImageData
 let hoverPx = null;                          // [x, y] in map pixels under the mouse
 
 let needFit = false;
 function fitMap() {
-  const w = mapCv.clientWidth, h = mapCv.clientHeight, n = S.size;
+  const w = mapCv.clientWidth, h = mapCv.clientHeight, mw = S.w, mh = S.h;
   if (!w || !h) { needFit = true; return; }     // pane hidden right now: fit when shown
   needFit = false;
   const pad = 16, top = $("app").classList.contains("wide") ? 34 : 76, bot = 22;
-  const z = Math.max(0.05, Math.min((w - pad * 2) / n, (h - top - bot) / n));
-  mapView = { zoom: z, ox: (w - n * z) / 2, oy: top + (h - top - bot - n * z) / 2 };
+  const z = Math.max(0.01, Math.min((w - pad * 2) / mw, (h - top - bot) / mh));
+  mapView = { zoom: z, ox: (w - mw * z) / 2, oy: top + (h - top - bot - mh * z) / 2 };
   viewDirty = true;
 }
+// Zoom so one map pixel is exactly one device pixel, keeping the screen centre.
+function mapActualSize() {
+  const w = mapCv.clientWidth, h = mapCv.clientHeight;
+  zoomMapAt(w / 2, h / 2, (1 / (window.devicePixelRatio || 1)) / mapView.zoom);
+}
 
+// Only the dirty rectangle is copied into the offscreen canvas (a brush dab on a
+// 2000 x 2000 map copies a few hundred pixels, not 16 MB).
 function redrawOffscreen() {
-  const n = S.size;
-  if (off.width !== n) { off.width = n; off.height = n; }
-  octx.putImageData(new ImageData(IMG, n, n), 0, 0);
+  const mw = S.w, mh = S.h, d = dirty2D;
+  if (d[0] > d[2]) return false;
+  if (off.width !== mw || off.height !== mh) { off.width = mw; off.height = mh; d[0] = 0; d[1] = 0; d[2] = mw - 1; d[3] = mh - 1; }
+  if (!mapImageData || mapImageData.data !== IMG) mapImageData = new ImageData(IMG, mw, mh);
+  octx.putImageData(mapImageData, 0, 0, d[0], d[1], d[2] - d[0] + 1, d[3] - d[1] + 1);
+  d[0] = 0; d[1] = 0; d[2] = -1; d[3] = -1;
+  return true;
 }
 
 function drawMap() {
   const dpr = window.devicePixelRatio || 1, w = mapCv.clientWidth, h = mapCv.clientHeight;
   mctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   mctx.fillStyle = "#0d0e12"; mctx.fillRect(0, 0, w, h);
-  const { zoom: z, ox, oy } = mapView, n = S.size;
+  const { zoom: z, ox, oy } = mapView, mw = S.w, mh = S.h, W = mw * z, Hs = mh * z;
+  // Nearest-neighbour scaling: every map pixel is a crisp square at any zoom.
   mctx.imageSmoothingEnabled = false;
-  mctx.drawImage(off, ox, oy, n * z, n * z);
+  mctx.drawImage(off, ox, oy, W, Hs);
   mctx.strokeStyle = "#ffffff30"; mctx.lineWidth = 1;
-  mctx.strokeRect(ox - 0.5, oy - 0.5, n * z + 1, n * z + 1);
+  mctx.strokeRect(ox - 0.5, oy - 0.5, W + 1, Hs + 1);
 
+  // Visible pixel range (lines are only drawn there, so huge maps stay cheap).
+  const vx0 = clamp(Math.floor(-ox / z), 0, mw), vx1 = clamp(Math.ceil((w - ox) / z), 0, mw);
+  const vy0 = clamp(Math.floor(-oy / z), 0, mh), vy1 = clamp(Math.ceil((h - oy) / z), 0, mh);
+  // Pixel grid when zoomed in far enough to paint single pixels.
+  if (z >= 10) {
+    mctx.strokeStyle = z >= 20 ? "#00000038" : "#00000024"; mctx.lineWidth = 1; mctx.beginPath();
+    for (let c = vx0; c <= vx1; c++) { const x = Math.round(ox + c * z) + 0.5; mctx.moveTo(x, oy + vy0 * z); mctx.lineTo(x, oy + vy1 * z); }
+    for (let r = vy0; r <= vy1; r++) { const y = Math.round(oy + r * z) + 0.5; mctx.moveTo(ox + vx0 * z, y); mctx.lineTo(ox + vx1 * z, y); }
+    mctx.stroke();
+  }
   // Chunk grid: chunk k covers cells k*C .. k*C+C, so its lines sit on pixel centres.
+  // The last chunk on each axis may be smaller when the cells don't divide by C.
   if (showChunks) {
+    const C = S.chunk, step = Math.max(1, Math.ceil(4 / (C * z))) * C;   // skip lines when they'd merge
     mctx.strokeStyle = "#ffffff70"; mctx.lineWidth = 1; mctx.beginPath();
-    for (let k = 0; k * S.chunk < n; k++) {
-      const p = (k * S.chunk + 0.5) * z;
-      mctx.moveTo(ox + p, oy); mctx.lineTo(ox + p, oy + n * z);
-      mctx.moveTo(ox, oy + p); mctx.lineTo(ox + n * z, oy + p);
-    }
+    for (let k = 0; k < mw; k += step) { const p = ox + (k + 0.5) * z; mctx.moveTo(p, oy); mctx.lineTo(p, oy + Hs); }
+    for (let k = 0; k < mh; k += step) { const p = oy + (k + 0.5) * z; mctx.moveTo(ox, p); mctx.lineTo(ox + W, p); }
+    mctx.moveTo(ox + (mw - 0.5) * z, oy); mctx.lineTo(ox + (mw - 0.5) * z, oy + Hs);
+    mctx.moveTo(ox, oy + (mh - 0.5) * z); mctx.lineTo(ox + W, oy + (mh - 0.5) * z);
     mctx.stroke();
   }
   // Brush outline under the mouse (fill / pick show a small crosshair instead).
@@ -846,7 +974,8 @@ function drawMap() {
     for (const [col, lw] of [["#000", 3], ["#fff", 1.5]]) {
       mctx.strokeStyle = col; mctx.lineWidth = lw; mctx.beginPath();
       if (tool === "fill" || tool === "pick") { mctx.moveTo(sx - 8, sy); mctx.lineTo(sx + 8, sy); mctx.moveTo(sx, sy - 8); mctx.lineTo(sx, sy + 8); }
-      else mctx.arc(sx, sy, Math.max(2, brushSize * z), 0, Math.PI * 2);
+      else if (brushSize <= 1) { const px = Math.round(hoverPx[0]), py = Math.round(hoverPx[1]); mctx.rect(ox + px * z, oy + py * z, Math.max(2, z), Math.max(2, z)); }
+      else mctx.arc(sx, sy, Math.max(2, (brushSize - 0.5) * z), 0, Math.PI * 2);
       mctx.stroke();
     }
   }
@@ -857,10 +986,10 @@ function screenToMap(sx, sy) { return [(sx - mapView.ox) / mapView.zoom - 0.5, (
 const hex2 = (v) => v.toString(16).padStart(2, "0");
 function updateHover() {
   if (!hoverPx) { $("hover").textContent = ""; return; }
-  const n = S.size, c = Math.round(hoverPx[0]), r = Math.round(hoverPx[1]);
-  if (c < 0 || r < 0 || c >= n || r >= n) { $("hover").textContent = ""; return; }
-  const i = r * n + c, o = i * 4;
-  $("hover").textContent = `px ${c},${r}  #${hex2(IMG[o])}${hex2(IMG[o + 1])}${hex2(IMG[o + 2])}  ${BIOMES[B[i]].name}  h ${(H[i] * S.maxH).toFixed(1)} m  slope ${slopeDeg(c, r).toFixed(0)}°  world ${fmtM(c * S.mpp)}, ${fmtM((n - 1 - r) * S.mpp)}`;
+  const mw = S.w, mh = S.h, c = Math.round(hoverPx[0]), r = Math.round(hoverPx[1]);
+  if (c < 0 || r < 0 || c >= mw || r >= mh) { $("hover").textContent = ""; return; }
+  const i = r * mw + c, o = i * 4, zp = mapView.zoom * (window.devicePixelRatio || 1);
+  $("hover").textContent = `px ${c},${r}  #${hex2(IMG[o])}${hex2(IMG[o + 1])}${hex2(IMG[o + 2])}  ${BIOMES[B[i]].name}  h ${(H[i] * S.maxH).toFixed(1)} m  slope ${slopeDeg(c, r).toFixed(0)}°  world ${fmtM(c * S.mpp)}, ${fmtM((mh - 1 - r) * S.mpp)}  zoom ${zp >= 1 ? zp.toFixed(zp < 10 ? 1 : 0) + "×" : "1:" + (1 / zp).toFixed(1)}`;
 }
 
 //----- 2D Map Input -----||
@@ -870,7 +999,7 @@ let pinch = null;    // { d, cx, cy } at the last move
 let panDrag = null;  // mouse right/middle drag
 
 function zoomMapAt(sx, sy, factor) {
-  const z = clamp(mapView.zoom * factor, 0.05, 64);
+  const z = clamp(mapView.zoom * factor, 0.01, 96);
   const k = z / mapView.zoom;
   mapView.ox = sx - (sx - mapView.ox) * k; mapView.oy = sy - (sy - mapView.oy) * k; mapView.zoom = z;
   viewDirty = true;
@@ -931,9 +1060,19 @@ mapCv.addEventListener("wheel", (e) => {
 }, { passive: false });
 
 //----- WebGL Setup -----||
+// Full-resolution preview: one vertex per map pixel, exactly the grid you export.
+// The mesh is never rebuilt. One small index buffer describes a tile of Tx x Ty cells,
+// and it is drawn once per tile with instancing (one draw call). The vertex shader works
+// out its own pixel from gl_VertexID (vertex inside the tile) and gl_InstanceID (which
+// tile), then reads that pixel's height from a float texture. Painting only re-uploads
+// the changed rectangle of the height and biome textures (texSubImage2D).
+// Tiles stay at most 256 x 256 vertices so the indices fit in uint16.
 const glCv = $("gl");
-const gl = glCv.getContext("webgl2", { antialias: true });
-let prog = null, uMVP, uAlpha, uFlat, terrainVAO, terrainVBO, terrainCount = 0, waterVAO, waterVBO;
+const gl = glCv.getContext("webgl2", { antialias: true, powerPreference: "high-performance" });
+let prog = null, waterProg = null, U = {}, WU = {}, gridVAO = null, gridIBO = null, waterVAO = null;
+let texH = null, texB = null, texW = 0, texHt = 0, maxTex = 0;
+let tile = { tx: 0, ty: 0, nx: 0, ny: 0, count: 0, forW: 0, forH: 0 };
+let glTooBig = false, lastDrawMs = 0;
 
 function compile(type, src) {
   const s = gl.createShader(type);
@@ -949,113 +1088,169 @@ function makeProgram(vsSrc, fsSrc) {
   gl.deleteShader(vs); gl.deleteShader(fs);
   return p;
 }
+function uniforms(p, names) { const o = {}; for (const n of names) o[n] = gl.getUniformLocation(p, n); return o; }
 
 if (!gl) {
   $("info").textContent = "WebGL 2 is not available in this browser, so there is no 3D preview. Painting and export still work.";
 } else {
-  // Flat shading without storing normals: the face normal comes from the screen-space
+  maxTex = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+  // Terrain. vGrid is the pixel position (col, row); the fragment shader floors it to
+  // the cell and colors the whole cell by its NW pixel's biome, like the export says.
+  // Flat shading without normals: the face normal comes from the screen-space
   // derivatives of the world position, which are constant across a triangle.
   prog = makeProgram(`#version 300 es
-layout(location = 0) in vec3 aPos;
-layout(location = 1) in vec4 aColor;
+precision highp float;
+precision highp int;
+uniform highp sampler2D uHeight;   // R32F, height 0..1 per pixel
+uniform ivec2 uSize;               // map w, h in pixels
+uniform ivec2 uTile;               // cells per tile, x and y
+uniform int uTilesX;
+uniform float uMpp, uMaxH;
 uniform mat4 uMVP;
 out vec3 vWorld;
-out vec4 vColor;
+out vec2 vGrid;
 void main() {
-  vWorld = aPos;
-  vColor = aColor;
-  gl_Position = uMVP * vec4(aPos, 1.0);
+  int vx = gl_VertexID % (uTile.x + 1), vy = gl_VertexID / (uTile.x + 1);
+  int tx = gl_InstanceID % uTilesX, ty = gl_InstanceID / uTilesX;
+  // Past the map edge (last tile when the cells don't divide evenly) the vertex is
+  // clamped onto the edge, so those triangles have zero area and draw nothing.
+  int c = min(tx * uTile.x + vx, uSize.x - 1), r = min(ty * uTile.y + vy, uSize.y - 1);
+  float h = texelFetch(uHeight, ivec2(c, r), 0).r;
+  vWorld = vec3(float(c) * uMpp, float(uSize.y - 1 - r) * uMpp, h * uMaxH);
+  vGrid = vec2(float(c), float(r));
+  gl_Position = uMVP * vec4(vWorld, 1.0);
 }`, `#version 300 es
 precision highp float;
-in vec3 vWorld;
-in vec4 vColor;
-uniform float uAlpha;
-uniform bool uFlat;
+precision highp int;
+uniform highp usampler2D uBiome;   // R8UI, biome index per pixel
+uniform ivec2 uSize;
+uniform vec3 uPal[${BIOMES.length}];
 uniform vec3 uSun;
+in vec3 vWorld;
+in vec2 vGrid;
 out vec4 fragColor;
 void main() {
-  if (!uFlat) { fragColor = vec4(vColor.rgb, uAlpha); return; }
+  ivec2 cell = clamp(ivec2(floor(vGrid)), ivec2(0), uSize - 2);
+  uint b = texelFetch(uBiome, cell, 0).r;
+  vec3 col = uPal[min(int(b), ${BIOMES.length - 1})];
   vec3 n = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
   if (n.z < 0.0) n = -n;
   float shade = 0.55 + 0.45 * max(0.0, dot(n, uSun));
-  fragColor = vec4(vColor.rgb * shade, uAlpha);
+  fragColor = vec4(col * shade, 1.0);
 }`);
-  uMVP = gl.getUniformLocation(prog, "uMVP");
-  uAlpha = gl.getUniformLocation(prog, "uAlpha");
-  uFlat = gl.getUniformLocation(prog, "uFlat");
+  U = uniforms(prog, ["uHeight", "uBiome", "uSize", "uTile", "uTilesX", "uMpp", "uMaxH", "uMVP", "uPal", "uSun"]);
   gl.useProgram(prog);
-  gl.uniform3fv(gl.getUniformLocation(prog, "uSun"), SUN);
+  gl.uniform1i(U.uHeight, 0); gl.uniform1i(U.uBiome, 1);
+  gl.uniform3fv(U.uSun, SUN);
+  gl.uniform3fv(U.uPal, new Float32Array(BIOMES.flatMap((b) => b.game.map((v) => v / 255))));
 
-  // Interleaved: pos float x3 (12 B) + color uint8 x4 normalized (4 B) = 16 B per vertex.
-  const setupVAO = () => {
-    const vao = gl.createVertexArray(), vbo = gl.createBuffer();
-    gl.bindVertexArray(vao); gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
-    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 16, 0); gl.enableVertexAttribArray(0);
-    gl.vertexAttribPointer(1, 4, gl.UNSIGNED_BYTE, true, 16, 12); gl.enableVertexAttribArray(1);
-    gl.bindVertexArray(null);
-    return [vao, vbo];
-  };
-  [terrainVAO, terrainVBO] = setupVAO();
-  [waterVAO, waterVBO] = setupVAO();
+  // Water: one quad at sea level, a little bigger than the map, made from gl_VertexID.
+  waterProg = makeProgram(`#version 300 es
+uniform vec4 uRect;     // x0, y0, x1, y1 in meters
+uniform float uZ;
+uniform mat4 uMVP;
+void main() {
+  int i = gl_VertexID;
+  vec2 p = vec2((i == 1 || i == 2 || i == 4) ? uRect.z : uRect.x, (i == 2 || i == 4 || i == 5) ? uRect.w : uRect.y);
+  gl_Position = uMVP * vec4(p, uZ, 1.0);
+}`, `#version 300 es
+precision mediump float;
+out vec4 fragColor;
+void main() { fragColor = vec4(40.0 / 255.0, 105.0 / 255.0, 220.0 / 255.0, 0.55); }`);
+  WU = uniforms(waterProg, ["uRect", "uZ", "uMVP"]);
+
+  gridVAO = gl.createVertexArray(); gridIBO = gl.createBuffer();
+  waterVAO = gl.createVertexArray();   // no attributes: everything comes from gl_VertexID
   gl.enable(gl.DEPTH_TEST);
   gl.clearColor(0.53, 0.70, 0.86, 1);
+  glCv.addEventListener("webglcontextlost", (e) => { e.preventDefault(); $("info").textContent = "3D preview lost its GPU context; reload the page to get it back (your map is autosaved)."; });
 }
 
-//----- Terrain Mesh (preview) -----||
+//----- Terrain Grid (preview) -----||
+// Tile size: split the cells into the fewest tiles of at most 255 cells, as evenly as
+// possible, so the clamped (wasted) part of the last tile stays small.
+function tileFor(cells) { const k = Math.ceil(cells / 255); return { t: Math.ceil(cells / k), n: k }; }
 // Same layout the export describes: per cell two triangles, SW-SE-NE and SW-NE-NW
-// (CCW seen from above), drawn in the game color of the cell's NW pixel's biome (the
-// pixel that owns the cell in the export). Big maps skip pixels so phones stay smooth.
-let previewStep = 1;
-function buildMesh() {
-  if (!gl) return;
-  const n = S.size, step = Math.max(1, Math.ceil((n - 1) / PREVIEW_MAX_CELLS));
-  previewStep = step;
-  const cells = Math.floor((n - 1) / step);
-  const buf = new ArrayBuffer(cells * cells * 6 * 16);
-  const f = new Float32Array(buf), u = new Uint8Array(buf);
-  const P = (c, r) => [c * S.mpp, (n - 1 - r) * S.mpp, H[r * n + c] * S.maxH];
-  let v = 0;
-  const put = (p, col) => {
-    const o = v * 4; f[o] = p[0]; f[o + 1] = p[1]; f[o + 2] = p[2];
-    const ob = v * 16 + 12; u[ob] = col[0]; u[ob + 1] = col[1]; u[ob + 2] = col[2]; u[ob + 3] = 255;
-    v++;
-  };
-  for (let gr = 0; gr < cells; gr++) {
-    for (let gc = 0; gc < cells; gc++) {
-      const c0 = gc * step, c1 = c0 + step, r0 = gr * step, r1 = r0 + step;   // r0 = north row
-      const nw = P(c0, r0), ne = P(c1, r0), sw = P(c0, r1), se = P(c1, r1);
-      const col = BIOMES[B[r0 * n + c0]].game;
-      put(sw, col); put(se, col); put(ne, col);
-      put(sw, col); put(ne, col); put(nw, col);
+// (CCW seen from above). Local vertex index = row * (tx + 1) + col inside the tile.
+function buildTileIndices() {
+  const a = tileFor(S.w - 1), b = tileFor(S.h - 1), tx = a.t, ty = b.t, vw = tx + 1;
+  const idx = new Uint16Array(tx * ty * 6);
+  let k = 0;
+  for (let r = 0; r < ty; r++) {
+    for (let c = 0; c < tx; c++) {
+      const nw = r * vw + c, ne = nw + 1, sw = nw + vw, se = sw + 1;
+      idx[k++] = sw; idx[k++] = se; idx[k++] = ne;
+      idx[k++] = sw; idx[k++] = ne; idx[k++] = nw;
     }
   }
-  gl.bindBuffer(gl.ARRAY_BUFFER, terrainVBO);
-  gl.bufferData(gl.ARRAY_BUFFER, buf, gl.STATIC_DRAW);
-  terrainCount = v;
-
-  // Water plane: one quad at sea level, a little bigger than the map.
-  const W = (n - 1) * S.mpp, m = W * 0.02, z = S.sea;
-  const wb = new ArrayBuffer(6 * 16), wf = new Float32Array(wb), wu = new Uint8Array(wb);
-  const quad = [[-m, -m], [W + m, -m], [W + m, W + m], [-m, -m], [W + m, W + m], [-m, W + m]];
-  quad.forEach((q, k) => { wf[k * 4] = q[0]; wf[k * 4 + 1] = q[1]; wf[k * 4 + 2] = z; wu[k * 16 + 12] = 40; wu[k * 16 + 13] = 105; wu[k * 16 + 14] = 220; wu[k * 16 + 15] = 255; });
-  gl.bindBuffer(gl.ARRAY_BUFFER, waterVBO);
-  gl.bufferData(gl.ARRAY_BUFFER, wb, gl.STATIC_DRAW);
-
-  $("glNote").textContent = (step > 1 ? `preview: 1 in ${step} pixels  ` : "") + `${fmtInt(terrainCount / 3)} triangles`;
+  gl.bindVertexArray(gridVAO);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gridIBO);
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx, gl.STATIC_DRAW);
+  gl.bindVertexArray(null);
+  tile = { tx, ty, nx: a.n, ny: b.n, count: idx.length, forW: S.w, forH: S.h };
+}
+function makeTex(internal, w, h) {
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texStorage2D(gl.TEXTURE_2D, 1, internal, w, h);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return t;
+}
+// Upload whatever changed since last time. Returns true if anything was uploaded.
+function uploadTerrain() {
+  if (!gl) return false;
+  const mw = S.w, mh = S.h, d = dirtyGL;
+  glTooBig = mw > maxTex || mh > maxTex;
+  if (glTooBig) return false;
+  if (tile.forW !== mw || tile.forH !== mh) buildTileIndices();
+  if (!texH || texW !== mw || texHt !== mh) {
+    if (texH) { gl.deleteTexture(texH); gl.deleteTexture(texB); }
+    texH = makeTex(gl.R32F, mw, mh); texB = makeTex(gl.R8UI, mw, mh); texW = mw; texHt = mh;
+    d[0] = 0; d[1] = 0; d[2] = mw - 1; d[3] = mh - 1;
+  }
+  if (d[0] > d[2]) return false;
+  const x = d[0], y = d[1], w = d[2] - d[0] + 1, h = d[3] - d[1] + 1;
+  // Upload a sub-rectangle straight out of the full-map arrays: ROW_LENGTH is the map
+  // width, SKIP_PIXELS / SKIP_ROWS move to the rectangle's corner.
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.pixelStorei(gl.UNPACK_ROW_LENGTH, mw);
+  gl.pixelStorei(gl.UNPACK_SKIP_PIXELS, x);
+  gl.pixelStorei(gl.UNPACK_SKIP_ROWS, y);
+  gl.bindTexture(gl.TEXTURE_2D, texH);
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, w, h, gl.RED, gl.FLOAT, H);
+  gl.bindTexture(gl.TEXTURE_2D, texB);
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, w, h, gl.RED_INTEGER, gl.UNSIGNED_BYTE, B);
+  gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
+  gl.pixelStorei(gl.UNPACK_SKIP_PIXELS, 0);
+  gl.pixelStorei(gl.UNPACK_SKIP_ROWS, 0);
+  d[0] = 0; d[1] = 0; d[2] = -1; d[3] = -1;
+  return true;
+}
+function updateGLNote() {
+  if (!gl) return;
+  const tris = 2 * (S.w - 1) * (S.h - 1);
+  let t = glTooBig ? `map is bigger than this GPU's ${maxTex} px texture limit: no 3D preview`
+                   : `full resolution: ${fmtInt(S.w * S.h)} vertices, ${fmtInt(tris)} triangles`;
+  if (!glTooBig && lastDrawMs > 0) t += ` · ${lastDrawMs.toFixed(lastDrawMs < 10 ? 1 : 0)} ms/frame`;
+  if (S.w * S.h > PHONE_SLOW_PX) t += `\nbig map: fine on desktop, may be slow on phones`;
+  $("glNote").textContent = t;
 }
 
 //----- Orbit Camera -----||
 const cam = { yaw: -2.1, pitch: 0.75, dist: 600, target: [0, 0, 0] };
 function fitCamera() {
-  const W = (S.size - 1) * S.mpp;
-  cam.target = [W / 2, W / 2, S.sea];
-  cam.dist = W * 1.15;
+  const W = (S.w - 1) * S.mpp, Hm = (S.h - 1) * S.mpp;
+  cam.target = [W / 2, Hm / 2, S.sea];
+  cam.dist = Math.max(W, Hm) * 1.15;
 }
 function cameraMVP() {
   const w = glCv.width, h = glCv.height;
   const cp = Math.cos(cam.pitch);
   const eye = [cam.target[0] + cam.dist * cp * Math.cos(cam.yaw), cam.target[1] + cam.dist * cp * Math.sin(cam.yaw), cam.target[2] + cam.dist * Math.sin(cam.pitch)];
-  const proj = mat4Perspective(50 * Math.PI / 180, w / Math.max(1, h), cam.dist * 0.01, cam.dist * 10 + S.maxH * 4);
+  const proj = mat4Perspective(50 * Math.PI / 180, w / Math.max(1, h), Math.max(0.05, cam.dist * 0.01), cam.dist * 10 + S.maxH * 4 + Math.max(S.w, S.h) * S.mpp);
   return mat4Mul(proj, mat4LookAt(eye, cam.target, [0, 0, 1]));
 }
 // Pan in the ground plane, along the camera's right and forward directions.
@@ -1090,7 +1285,7 @@ glCv.addEventListener("pointermove", (e) => {
   if (glPinch && glPointers.size >= 2) {
     const [a, b] = [...glPointers.values()];
     const d = Math.hypot(a[0] - b[0], a[1] - b[1]), cx = (a[0] + b[0]) / 2, cy = (a[1] + b[1]) / 2;
-    if (glPinch.d > 4 && d > 4) cam.dist = clamp(cam.dist * glPinch.d / d, 5, 1e5);
+    if (glPinch.d > 4 && d > 4) cam.dist = clamp(cam.dist * glPinch.d / d, 2, 1e5);
     panCamera(cx - glPinch.cx, cy - glPinch.cy);
     glPinch = { d, cx, cy };
   } else if (glDrag) {
@@ -1108,40 +1303,57 @@ function glUp(e) {
 }
 glCv.addEventListener("pointerup", glUp);
 glCv.addEventListener("pointercancel", glUp);
-glCv.addEventListener("wheel", (e) => { e.preventDefault(); cam.dist = clamp(cam.dist * Math.exp(e.deltaY * 0.0015), 5, 1e5); }, { passive: false });
+glCv.addEventListener("wheel", (e) => { e.preventDefault(); cam.dist = clamp(cam.dist * Math.exp(e.deltaY * 0.0015), 2, 1e5); }, { passive: false });
 
 //----- Stats -----||
 // What a game pays if it builds flat-shaded, unindexed chunk meshes: 2 triangles per
 // cell, 3 verts each (no sharing, because each face has its own normal), at the vertex
 // size set in Map settings. A chunk of C x C cells = 6*C*C verts.
 function statsData() {
-  const n = S.size, cells = n - 1, C = S.chunk;
-  const chunksPerSide = Math.ceil(cells / C);
+  const w = S.w, h = S.h, cx = w - 1, cy = h - 1, C = S.chunk;
+  const chunksX = Math.ceil(cx / C), chunksY = Math.ceil(cy / C);
   const vChunk = C * C * 6;
-  const vTotal = cells * cells * 6;
+  const vTotal = cx * cy * 6;
   return {
-    n, cells, C, chunksPerSide, chunks: chunksPerSide * chunksPerSide,
-    worldM: cells * S.mpp, chunkM: C * S.mpp,
+    w, h, cx, cy, C, chunksX, chunksY, chunks: chunksX * chunksY,
+    lastX: cx - (chunksX - 1) * C, lastY: cy - (chunksY - 1) * C,     // cells in the last chunk column / row
+    even: cx % C === 0 && cy % C === 0,
+    worldX: cx * S.mpp, worldY: cy * S.mpp, chunkM: C * S.mpp,
     vChunk, tChunk: C * C * 2, bChunk: vChunk * S.vbytes,
-    vTotal, tTotal: cells * cells * 2, bTotal: vTotal * S.vbytes,
-    data16: n * n * 3, data8: n * n * 2,
+    vTotal, tTotal: cx * cy * 2, bTotal: vTotal * S.vbytes,
+    data16: w * h * 3, data8: w * h * 2, dataPacked: w * h * 2,
   };
+}
+// Hint for sizes whose cells don't divide into whole chunks (still fine: the last
+// chunk column / row is just narrower), with the nearest sizes that do divide.
+function chunkHint(w, h, C) {
+  const bad = [];
+  for (const [axis, n] of [["width", w], ["height", h]]) {
+    if ((n - 1) % C === 0) continue;
+    const lo = Math.floor((n - 1) / C) * C + 1, hi = lo + C;
+    bad.push(`${axis} ${n}: ${n - 1} cells ÷ ${C} leaves a ${(n - 1) % C}-cell last chunk (${lo > 1 ? lo + " or " : ""}${hi} px divide evenly)`);
+  }
+  return bad;
 }
 function updateStats() {
   const d = statsData();
   $("stats").textContent =
-    `${d.n}×${d.n} px · ${S.mpp} m/px · world ${fmtM(d.worldM)} · ${d.chunksPerSide}×${d.chunksPerSide} chunks of ${fmtM(d.chunkM)}\n` +
+    `${d.w}×${d.h} px · ${S.mpp} m/px · world ${fmtM(d.worldX)} × ${fmtM(d.worldY)} · ${d.chunksX}×${d.chunksY} chunks of ${fmtM(d.chunkM)}${d.even ? "" : " (edge chunks smaller)"}\n` +
     `chunk ${fmtInt(d.tChunk)} tris · ${fmtInt(d.vChunk)} verts · ${fmtBytes(d.bChunk)}   all ${fmtBytes(d.bTotal)}`;
+  const hint = chunkHint(d.w, d.h, d.C);
   $("mapStats").textContent =
-    `World:   ${fmtM(d.worldM)} × ${fmtM(d.worldM)}, height 0..${fmtM(S.maxH)}, sea ${fmtM(S.sea)}\n` +
-    `Grid:    ${d.n} × ${d.n} vertices = ${fmtInt(d.cells)} × ${fmtInt(d.cells)} cells\n` +
-    `Chunks:  ${d.chunksPerSide} × ${d.chunksPerSide} = ${d.chunks}, each ${d.C} × ${d.C} cells (${fmtM(d.chunkM)})\n` +
+    `World:   ${fmtM(d.worldX)} × ${fmtM(d.worldY)}, height 0..${fmtM(S.maxH)}, sea ${fmtM(S.sea)}\n` +
+    `Grid:    ${d.w} × ${d.h} vertices = ${fmtInt(d.cx)} × ${fmtInt(d.cy)} cells\n` +
+    `Chunks:  ${d.chunksX} × ${d.chunksY} = ${d.chunks}, each ${d.C} × ${d.C} cells (${fmtM(d.chunkM)})\n` +
+    (d.even ? "" : `         last column ${d.lastX} cells wide, last row ${d.lastY} cells tall\n`) +
     `Per chunk (flat-shaded, ${S.vbytes}-byte vertex, no indices):\n` +
     `         ${fmtInt(d.tChunk)} triangles, ${fmtInt(d.vChunk)} verts, ${fmtBytes(d.bChunk)}\n` +
     `Whole world as meshes: ${fmtInt(d.tTotal)} triangles, ${fmtBytes(d.bTotal)}\n` +
     `Height steps: ${Math.min(...KEY_SUM.map((s) => Math.round(s * (1 - VMIN))))}..${Math.max(...KEY_SUM.map((s) => Math.round(s * (1 - VMIN))))} per biome ` +
     `(${(S.maxH / Math.min(...KEY_SUM.map((s) => s * (1 - VMIN)))).toFixed(2)} m or finer)\n` +
-    `Exported grid data: ${fmtBytes(d.data16)} (uint16 height) / ${fmtBytes(d.data8)} (uint8)`;
+    `Exported grid data: ${fmtBytes(d.data16)} (uint16 + biome) / ${fmtBytes(d.data8)} (uint8 + biome or packed)` +
+    (hint.length ? `\nHint: ${hint.join("; ")}` : "");
+  updateGLNote();
 }
 
 //----- PNG Metadata (settings ride along in a tEXt chunk) -----||
@@ -1193,9 +1405,9 @@ function download(name, data, type) {
 function canvasPNG(cv) { return new Promise((res) => cv.toBlob(async (b) => res(new Uint8Array(await b.arrayBuffer())), "image/png")); }
 
 async function saveMapPNG() {
-  const n = S.size, cv = document.createElement("canvas");
-  cv.width = n; cv.height = n;
-  cv.getContext("2d").putImageData(new ImageData(IMG.slice(), n, n), 0, 0);
+  const cv = document.createElement("canvas");
+  cv.width = S.w; cv.height = S.h;
+  cv.getContext("2d").putImageData(new ImageData(IMG.slice(), S.w, S.h), 0, 0);
   const png = pngWithText(await canvasPNG(cv), PNG_META_KEY, asciiJSON({ app: "terrain-maker", version: 2, settings: settingsJSON() }));
   download(`${cIdent(S.name)}.png`, new Blob([png], { type: "image/png" }));
 }
@@ -1224,11 +1436,11 @@ async function decodeImage(file) {
     });
   }
 }
-function imageToPixels(img, n, smooth) {
-  const cv = document.createElement("canvas"); cv.width = n; cv.height = n;
+function imageToPixels(img, w, h, smooth) {
+  const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
   const cx = cv.getContext("2d", { willReadFrequently: true }); cx.imageSmoothingEnabled = smooth;
-  cx.drawImage(img, 0, 0, n, n);
-  return cx.getImageData(0, 0, n, n).data;
+  cx.drawImage(img, 0, 0, w, h);
+  return cx.getImageData(0, 0, w, h).data;
 }
 
 async function openMapPNG(file) {
@@ -1237,25 +1449,26 @@ async function openMapPNG(file) {
   try { const t = pngText(bytes, PNG_META_KEY); if (t) meta = JSON.parse(t); } catch (e) { meta = null; }
   const img = await decodeImage(file);
   const w = img.width, h = img.height;
-  const own = w === h && w >= 16 && w <= 1024;
-  const n = own ? w : S.size;
-  const px = imageToPixels(img, n, false);       // nearest: never blend two biomes
+  const own = w >= SIZE_MIN && w <= SIZE_MAX && h >= SIZE_MIN && h <= SIZE_MAX;
+  const nw = own ? w : S.w, nh = own ? h : S.h;
+  const px = imageToPixels(img, nw, nh, false);  // nearest: never blend two biomes
   pushUndo();
   if (meta && meta.settings) applySettings(meta.settings);
-  allocMap(n);
+  allocMap(nw, nh);
   IMG.set(px);
   const changed = canonicalizeAll();
   syncSettingsUI(); touched(true);
-  let msg = own ? `Opened ${n}×${n} map` : `Resized ${w}×${h} to ${n}×${n}`;
+  let msg = own ? `Opened ${nw}×${nh} map` : `Resized ${w}×${h} to ${nw}×${nh}`;
   if (meta) msg += " + settings";
   if (changed) msg += `, ${fmtInt(changed)} px snapped to palette`;
   toast(msg);
 }
 async function importGreyHeight(file) {
   const img = await decodeImage(file);
-  const px = imageToPixels(img, S.size, true);
+  const px = imageToPixels(img, S.w, S.h, true);
   pushUndo();
   for (let i = 0; i < H.length; i++) setPixel(i, B[i], (px[i * 4] * 0.299 + px[i * 4 + 1] * 0.587 + px[i * 4 + 2] * 0.114) / 255, false);
+  markAll();
   touched(false); toast("Heights imported (biomes kept)");
 }
 
@@ -1292,38 +1505,70 @@ function cIdent(s) {
 const ff = (x) => { const s = String(+x.toPrecision(9)); return (s.includes(".") || s.includes("e") ? s : s + ".0") + "f"; };
 const rgbRow = (c) => c.map((v) => String(v).padStart(3)).join(", ");
 
-function buildExport(bits) {
-  const name = cIdent(S.name), n = S.size, d = statsData();
-  const maxQ = bits === 16 ? 65535 : 255, htype = bits === 16 ? "uint16_t" : "uint8_t";
-  const dataBytes = n * n * (bits / 8) + n * n;
+// Export formats (same for .h and .bin):
+//   "16":     uint16 height[w*h] + uint8 biome[w*h]          (3 bytes per sample)
+//   "8":      uint8  height[w*h] + uint8 biome[w*h]          (2 bytes per sample)
+//   "packed": uint16 packed[w*h], height in the top 12 bits, biome in the low 4 bits:
+//             h = v >> 4 (0..4095), b = v & 15               (2 bytes per sample, max 16 biomes)
+const EXPORT_FORMATS = {
+  "16":     { id: 0, maxQ: 65535, bytes: 3, label: "uint16 height + uint8 biome" },
+  "8":      { id: 1, maxQ: 255,   bytes: 2, label: "uint8 height + uint8 biome" },
+  "packed": { id: 2, maxQ: 4095,  bytes: 2, label: "packed uint16 (12-bit height | 4-bit biome)" },
+};
+function quantHeights(maxQ) {
+  const q = maxQ > 255 ? new Uint16Array(H.length) : new Uint8Array(H.length);
+  for (let i = 0; i < H.length; i++) q[i] = Math.round(clamp(H[i], 0, 1) * maxQ);
+  return q;
+}
+function packedGrid() {
+  if (BIOMES.length > 16) throw new Error("Packed format holds at most 16 biomes");
+  const q = quantHeights(4095), out = new Uint16Array(H.length);
+  for (let i = 0; i < out.length; i++) out[i] = (q[i] << 4) | (B[i] & 15);
+  return out;
+}
+
+function buildExport(fmt) {
+  const F = EXPORT_FORMATS[fmt] || EXPORT_FORMATS["16"];
+  const name = cIdent(S.name), w = S.w, h = S.h, d = statsData();
+  const packed = fmt === "packed", maxQ = F.maxQ, htype = maxQ > 255 ? "uint16_t" : "uint8_t";
+  const dataBytes = w * h * F.bytes;
   const L = [];
   L.push(`#pragma once`);
   L.push(`#include <stdint.h>`);
-  L.push(`// ${name}: ${n} x ${n} terrain grid, ${fmtInt(dataBytes)} bytes of data (exported from Terrain Maker v2)`);
-  L.push(`// World ${fmtM(d.worldM)} x ${fmtM(d.worldM)}, ${d.chunksPerSide} x ${d.chunksPerSide} chunks of ${d.C} x ${d.C} cells.`);
+  L.push(`// ${name}: ${w} x ${h} terrain grid, ${fmtInt(dataBytes)} bytes of data, ${F.label} (exported from Terrain Maker)`);
+  L.push(`// World ${fmtM(d.worldX)} x ${fmtM(d.worldY)}, ${d.chunksX} x ${d.chunksY} chunks of ${d.C} x ${d.C} cells.`);
   L.push(``);
   L.push(`//----- Grid -----||`);
   L.push(`// One sample per map pixel, and each sample is one terrain vertex. Z is up.`);
   L.push(`// Row-major: i = row * ${name}_w + col. Row 0 is the NORTH edge (top of the image).`);
   L.push(`//   world x = col * ${name}_meters_per_px`);
   L.push(`//   world y = (${name}_h - 1 - row) * ${name}_meters_per_px`);
-  L.push(`//   world z = ${name}_height[i] * ${name}_height_scale            (meters, 0..${fmtM(S.maxH)})`);
+  if (packed) {
+    L.push(`//   v       = ${name}_packed[i]`);
+    L.push(`//   world z = (v >> 4) * ${name}_height_scale                    (meters, 0..${fmtM(S.maxH)})`);
+    L.push(`//   biome   = v & 15`);
+  } else {
+    L.push(`//   world z = ${name}_height[i] * ${name}_height_scale            (meters, 0..${fmtM(S.maxH)})`);
+  }
   L.push(`// Below ${name}_sea_level is under the sea plane, whatever the biome.`);
   L.push(`//----- Cells + Triangles -----||`);
   L.push(`// Cell (col, row) is the square between samples (col, row) and (col+1, row+1), so`);
-  L.push(`// there are (w-1) x (h-1) cells. Its biome is ${name}_biome[row * w + col] (its NW sample).`);
+  L.push(`// there are (w-1) x (h-1) cells. Its biome is the biome of sample (col, row), its NW corner.`);
   L.push(`// Two triangles per cell, CCW seen from above (+Z), split on the SW-NE diagonal:`);
   L.push(`//   SW (col, row+1), SE (col+1, row+1), NE (col+1, row)`);
   L.push(`//   SW (col, row+1), NE (col+1, row),   NW (col, row)`);
   L.push(`// Flat shaded: each triangle gets its own face normal, so 3 verts per triangle.`);
   L.push(`//----- Chunks -----||`);
-  L.push(`// Chunk (cx, cy) owns cells col in [cx*C, cx*C + C) and row in [cy*C, cy*C + C),`);
-  L.push(`// clipped to the map (C = ${name}_chunk_cells, cy = 0 is the north strip). It reads samples`);
-  L.push(`// up to col cx*C + C, the edge it shares with the next chunk, so neighbours use the`);
-  L.push(`// same edge heights and never crack. Full chunk: ${fmtInt(d.tChunk)} triangles, ${fmtInt(d.vChunk)} verts,`);
-  L.push(`// ${fmtBytes(d.bChunk)} at ${S.vbytes} bytes per vertex. Whole world: ${fmtInt(d.tTotal)} triangles, ${fmtBytes(d.bTotal)}.`);
+  L.push(`// Chunk (cx, cy) owns cells col in [cx*C, min(cx*C + C, w-1)) and row in`);
+  L.push(`// [cy*C, min(cy*C + C, h-1)) (C = ${name}_chunk_cells, cy = 0 is the north strip). It reads`);
+  L.push(`// samples up to col cx*C + C, the edge it shares with the next chunk, so neighbours use`);
+  L.push(`// the same edge heights and never crack.`);
+  L.push(d.even ? `// The cells divide evenly: every chunk is a full ${d.C} x ${d.C}.`
+                : `// The cells do NOT divide evenly: the last chunk column is ${d.lastX} cells wide and the last row ${d.lastY} cells tall.`);
+  L.push(`// Full chunk: ${fmtInt(d.tChunk)} triangles, ${fmtInt(d.vChunk)} verts, ${fmtBytes(d.bChunk)} at ${S.vbytes} bytes per vertex.`);
+  L.push(`// Whole world: ${fmtInt(d.tTotal)} triangles, ${fmtBytes(d.bTotal)}.`);
   L.push(`//----- Map Image -----||`);
-  L.push(`// The map was painted as one color image: hue = biome, brightness = height. The two`);
+  L.push(`// The map was painted as one color image: hue = biome, brightness = height. The`);
   L.push(`// grids below are already decoded from it. To decode the PNG yourself, per pixel r,g,b:`);
   L.push(`//   s = r + g + b   (s < 12: Water, height 0)`);
   L.push(`//   biome  = the k whose terrain_biome_key_rgb[k] / its channel sum is nearest to`);
@@ -1331,18 +1576,19 @@ function buildExport(bits) {
   L.push(`//   height = clamp((s / key_sum[biome] - TERRAIN_KEY_MIN_BRIGHTNESS)`);
   L.push(`//                  / (1 - TERRAIN_KEY_MIN_BRIGHTNESS), 0, 1) * max_height`);
   L.push(``);
-  L.push(`static const int   ${name}_w = ${n};`);
-  L.push(`static const int   ${name}_h = ${n};`);
+  L.push(`static const int   ${name}_w = ${w};`);
+  L.push(`static const int   ${name}_h = ${h};`);
   L.push(`static const float ${name}_meters_per_px = ${ff(S.mpp)};`);
   L.push(`static const float ${name}_max_height = ${ff(S.maxH)};`);
   L.push(`static const float ${name}_height_scale = ${ff(S.maxH)} / ${maxQ}.0f;   // meters per height step`);
   L.push(`static const float ${name}_sea_level = ${ff(S.sea)};`);
   L.push(`static const int   ${name}_chunk_cells = ${d.C};`);
-  L.push(`static const int   ${name}_chunks_x = ${d.chunksPerSide};`);
-  L.push(`static const int   ${name}_chunks_y = ${d.chunksPerSide};`);
+  L.push(`static const int   ${name}_chunks_x = ${d.chunksX};`);
+  L.push(`static const int   ${name}_chunks_y = ${d.chunksY};`);
+  L.push(`static const int   ${name}_is_packed = ${packed ? 1 : 0};   // 1: one uint16 per sample (h = v >> 4, biome = v & 15)`);
   L.push(``);
   L.push(`//----- Biomes -----||`);
-  L.push(`// Index stored in ${name}_biome. Shared by every map, so new biomes only go at the end.`);
+  L.push(`// Index stored in the biome data. Shared by every map, so new biomes only go at the end.`);
   L.push(`#ifndef TERRAIN_BIOMES_DEFINED`);
   L.push(`#define TERRAIN_BIOMES_DEFINED`);
   L.push(`enum TerrainBiome : uint8_t {`);
@@ -1361,29 +1607,39 @@ function buildExport(bits) {
   L.push(`#endif`);
   L.push(``);
   L.push(`//----- Data -----||`);
-  L.push(`static const ${htype} ${name}_height[${n} * ${n}] = {`);
-  const per = bits === 16 ? 16 : 24;
-  for (let r = 0; r < n; r++) {
-    if (r % 32 === 0) L.push(`    // row ${r}`);
-    for (let c = 0; c < n; c += per) {
-      const vals = [];
-      for (let k = c; k < Math.min(n, c + per); k++) vals.push(Math.round(clamp(H[r * n + k], 0, 1) * maxQ));
-      L.push(`    ${vals.join(",")},`);
+  const grid = (type, ident, arr, per) => {
+    L.push(`static const ${type} ${ident}[${w} * ${h}] = {`);
+    for (let r = 0; r < h; r++) {
+      if (r % 32 === 0) L.push(`    // row ${r}`);
+      for (let c = 0; c < w; c += per) L.push(`    ${Array.prototype.join.call(arr.subarray(r * w + c, r * w + Math.min(w, c + per)), ",")},`);
     }
-  }
-  L.push(`};`);
-  L.push(`static const uint8_t ${name}_biome[${n} * ${n}] = {`);
-  for (let r = 0; r < n; r++) {
-    if (r % 32 === 0) L.push(`    // row ${r}`);
-    for (let c = 0; c < n; c += 32) {
-      const vals = [];
-      for (let k = c; k < Math.min(n, c + 32); k++) vals.push(B[r * n + k]);
-      L.push(`    ${vals.join(",")},`);
-    }
-  }
-  L.push(`};`);
+    L.push(`};`);
+  };
+  if (packed) grid("uint16_t", `${name}_packed`, packedGrid(), 16);
+  else { grid(htype, `${name}_height`, quantHeights(maxQ), maxQ > 255 ? 16 : 24); grid("uint8_t", `${name}_biome`, B, 32); }
   L.push(``);
   return L.join("\n");
+}
+
+// Binary file (.bin), little-endian, for big maps that are too large to compile as a header:
+//   64-byte header, then the data. See BIN_HEADER in the README for the layout.
+function buildBin(fmt) {
+  const F = EXPORT_FORMATS[fmt] || EXPORT_FORMATS["16"], d = statsData(), n = S.w * S.h;
+  const out = new ArrayBuffer(64 + n * F.bytes), dv = new DataView(out);
+  [84, 77, 65, 80].forEach((c, k) => dv.setUint8(k, c));          // "TMAP"
+  dv.setUint32(4, 1, true);                                         // version
+  dv.setUint32(8, S.w, true); dv.setUint32(12, S.h, true);
+  dv.setUint32(16, d.C, true); dv.setUint32(20, d.chunksX, true); dv.setUint32(24, d.chunksY, true);
+  dv.setUint32(28, F.id, true);                                     // 0 = u16+u8, 1 = u8+u8, 2 = packed u16
+  dv.setFloat32(32, S.mpp, true); dv.setFloat32(36, S.maxH, true);
+  dv.setFloat32(40, S.maxH / F.maxQ, true); dv.setFloat32(44, S.sea, true);
+  dv.setUint32(48, BIOMES.length, true);
+  const u8 = new Uint8Array(out);
+  const putU16 = (arr, at) => { for (let i = 0; i < arr.length; i++) dv.setUint16(at + i * 2, arr[i], true); };
+  if (fmt === "packed") putU16(packedGrid(), 64);
+  else if (fmt === "8") { u8.set(quantHeights(255), 64); u8.set(B, 64 + n); }
+  else { putU16(quantHeights(65535), 64); u8.set(B, 64 + n * 2); }
+  return u8;
 }
 
 // Clipboard API needs a secure context (https or localhost); file:// may refuse,
@@ -1409,14 +1665,17 @@ function toast(msg) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
 }
 
-let exportCache = "";
+let exportCache = "", lastExportMs = 0;
 function refreshExport() {
-  const bits = +$("eBits").value;
-  exportCache = buildExport(bits);
+  const fmt = $("eBits").value, F = EXPORT_FORMATS[fmt];
+  const t0 = performance.now();
+  exportCache = buildExport(fmt);
+  lastExportMs = performance.now() - t0;
   // A 512 x 512 map is ~1.5 MB of text; phones choke showing that, so show the top only.
   const PREVIEW = 200000;
   $("exportText").value = exportCache.length > PREVIEW ? exportCache.slice(0, exportCache.lastIndexOf("\n", PREVIEW)) + "\n    // ... (preview cut here; Copy and Save .h include everything)\n" : exportCache;
-  $("eNote").textContent = `${cIdent(S.name)}.h, ${fmtBytes(exportCache.length)} of text. Data in the game: ${fmtBytes(S.size * S.size * (bits / 8 + 1))}. The game builds the chunk meshes from the height + biome grids.`;
+  $("eNote").textContent = `${cIdent(S.name)}.h, ${fmtBytes(exportCache.length)} of text. Data in the game: ${fmtBytes(S.w * S.h * F.bytes)} (${F.label}); .bin is ${fmtBytes(64 + S.w * S.h * F.bytes)}. ` +
+    `The game builds the chunk meshes from the grid.` + (S.w * S.h > PHONE_SLOW_PX ? ` For a map this big, .bin loads faster than compiling the header.` : "");
 }
 
 //----- UI Wiring -----||
@@ -1469,19 +1728,52 @@ document.querySelectorAll("#tabs button").forEach((b) => b.addEventListener("cli
 function closeModals() { document.querySelectorAll(".modal").forEach((m) => m.classList.remove("show")); }
 function openModal(id) { closeModals(); $(id).classList.add("show"); }
 
-// The size list only has the standard sizes; an opened PNG may bring another one.
-function syncSizeOption() {
-  const sel = $("setSize");
-  if (![...sel.options].some((o) => +o.value === S.size)) {
-    const o = document.createElement("option"); o.textContent = String(S.size);
-    const after = [...sel.options].find((x) => +x.value > S.size);
-    sel.insertBefore(o, after || null);
+//----- Map Size UI -----||
+// Width, height and m/px are typed (or picked from a preset) and only take effect on
+// Apply, with a live preview of the world size and chunk layout before you commit.
+function sizeFields() {
+  const w = clamp(Math.round(+$("setW").value || S.w), SIZE_MIN, SIZE_MAX);
+  const h = clamp(Math.round(+$("setH").value || S.h), SIZE_MIN, SIZE_MAX);
+  const mpp = clamp(+$("setMpp").value || S.mpp, 0.25, 64);
+  return { w, h, mpp };
+}
+function syncSizeUI() {
+  $("setW").value = S.w; $("setH").value = S.h; $("setMpp").value = S.mpp;
+  updateSizePreview();
+}
+function updateSizePreview() {
+  const { w, h, mpp } = sizeFields(), C = S.chunk;
+  const cx = Math.ceil((w - 1) / C), cy = Math.ceil((h - 1) / C);
+  const same = w === S.w && h === S.h && mpp === S.mpp;
+  const preset = [...$("setPreset").options].find((o) => o.value === `${w},${h},${mpp}`);
+  $("setPreset").value = preset ? preset.value : "";
+  const hint = chunkHint(w, h, C);
+  let t = `${same ? "Now" : "New"}: ${w} × ${h} px at ${mpp} m/px\n` +
+    `World:  ${fmtM((w - 1) * mpp)} × ${fmtM((h - 1) * mpp)}\n` +
+    `Chunks: ${cx} × ${cy} of ${C} cells (${fmtM(C * mpp)})${hint.length ? "" : ", all full size"}\n` +
+    `Data:   ${fmtBytes(w * h * 3)} (uint16 + biome), ${fmtBytes(w * h * 2)} (packed)\n` +
+    `3D:     ${fmtInt(2 * (w - 1) * (h - 1))} triangles at full resolution`;
+  if (hint.length) t += `\nHint: ${hint.join("; ")}. Uneven is fine: the last chunks are just narrower.`;
+  if (w * h > PHONE_SLOW_PX) t += `\nNote: a map this big is fine on desktop but may be slow on phones.`;
+  if (gl && (w > maxTex || h > maxTex)) t += `\nThis GPU's texture limit is ${maxTex} px, so the 3D preview will be off.`;
+  if (!same) t += `\nWas:    ${S.w} × ${S.h} px at ${S.mpp} m/px (${fmtM((S.w - 1) * S.mpp)} × ${fmtM((S.h - 1) * S.mpp)})`;
+  $("sizePreview").textContent = t;
+  $("setApply").disabled = same;
+}
+function applySize() {
+  const { w, h, mpp } = sizeFields();
+  if (w === S.w && h === S.h && mpp === S.mpp) return;
+  pushUndo();
+  if (w !== S.w || h !== S.h) {
+    if ($("setResize").value === "scale") resampleTo(w, h); else cropPadTo(w, h, $("setResize").value);
   }
-  sel.value = String(S.size);
+  S.mpp = mpp;
+  touched(true);
+  toast(`Map is now ${w} × ${h} px, ${fmtM((w - 1) * mpp)} × ${fmtM((h - 1) * mpp)} (Undo to go back)`);
 }
 function syncSettingsUI() {
-  syncSizeOption();
-  $("setName").value = S.name; $("setMpp").value = S.mpp;
+  syncSizeUI();
+  $("setName").value = S.name;
   $("setMaxH").value = S.maxH; $("setSea").value = S.sea; $("setChunk").value = String(S.chunk);
   $("setVBytes").value = S.vbytes; $("setWater").checked = S.water;
   updateStats();
@@ -1489,10 +1781,14 @@ function syncSettingsUI() {
 $("bMapSet").addEventListener("click", () => { syncSettingsUI(); openModal("mapModal"); });
 $("mmClose").addEventListener("click", closeModals);
 $("setName").addEventListener("input", (e) => { S.name = e.target.value; scheduleSave(); });
-$("setSize").addEventListener("change", (e) => {
-  const n = +e.target.value; if (n === S.size) return;
-  pushUndo(); resampleTo(n); touched(true);
+$("setPreset").addEventListener("change", (e) => {
+  if (!e.target.value) return;
+  const [w, h, mpp] = e.target.value.split(",").map(Number);
+  $("setW").value = w; $("setH").value = h; $("setMpp").value = mpp;
+  updateSizePreview();
 });
+for (const id of ["setW", "setH", "setMpp"]) $(id).addEventListener("input", updateSizePreview);
+$("setApply").addEventListener("click", () => { applySize(); updateSizePreview(); });
 const numSetting = (id, key, lo, hi, int) => $(id).addEventListener("change", (e) => {
   let v = parseFloat(e.target.value);
   if (!Number.isFinite(v)) { e.target.value = S[key]; return; }
@@ -1500,11 +1796,10 @@ const numSetting = (id, key, lo, hi, int) => $(id).addEventListener("change", (e
   S[key] = clamp(v, lo, hi); e.target.value = S[key];
   touched(key === "mpp");
 });
-numSetting("setMpp", "mpp", 0.25, 64);
 numSetting("setMaxH", "maxH", 1, 4000);
 numSetting("setSea", "sea", 0, 4000);
 numSetting("setVBytes", "vbytes", 4, 64, true);
-$("setChunk").addEventListener("change", (e) => { S.chunk = +e.target.value; touched(false); });
+$("setChunk").addEventListener("change", (e) => { S.chunk = +e.target.value; touched(false); updateSizePreview(); });
 $("setWater").addEventListener("change", (e) => { S.water = e.target.checked; scheduleSave(); });
 
 $("bGen").addEventListener("click", () => { if (!$("genSeed").value) $("genSeed").value = 1; openModal("genModal"); });
@@ -1537,7 +1832,7 @@ $("fNew").addEventListener("click", () => {
   pushUndo();
   const h = Math.min(1, (S.sea + 4) / S.maxH);
   for (let i = 0; i < H.length; i++) setPixel(i, B_GRASS, h, false);
-  touched(false); closeModals(); toast("New flat map (Undo to go back)");
+  markAll(); touched(false); closeModals(); toast("New flat map (Undo to go back)");
 });
 
 $("bExport").addEventListener("click", () => { refreshExport(); openModal("exportModal"); });
@@ -1545,6 +1840,7 @@ $("eBits").addEventListener("change", refreshExport);
 $("eClose").addEventListener("click", closeModals);
 $("eCopy").addEventListener("click", async () => toast((await copyText(exportCache)) ? "Copied to clipboard" : "Copy failed: use Save .h"));
 $("eSave").addEventListener("click", () => download(`${cIdent(S.name)}.h`, exportCache, "text/plain"));
+$("eSaveBin").addEventListener("click", () => download(`${cIdent(S.name)}.bin`, buildBin($("eBits").value), "application/octet-stream"));
 
 $("bHelp").addEventListener("click", () => openModal("helpModal"));
 $("hmClose").addEventListener("click", () => { closeModals(); localStorage.setItem(SAVE_KEY + ".helped", "1"); });
@@ -1558,6 +1854,8 @@ window.addEventListener("keydown", (e) => {
   const k = e.key.toLowerCase();
   if ((e.ctrlKey || e.metaKey) && k === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); }
   else if ((e.ctrlKey || e.metaKey) && k === "y") { e.preventDefault(); redo(); }
+  else if (k === "f") fitMap();
+  else if (k === "0") mapActualSize();
   else if (k === "[") { brushSize = clamp(brushSize - 1, 1, 64); syncSliders(); viewDirty = true; }
   else if (k === "]") { brushSize = clamp(brushSize + 1, 1, 64); syncSliders(); viewDirty = true; }
   else if (k >= "1" && k <= String(BIOMES.length)) selectBiome(+k - 1);
@@ -1583,52 +1881,85 @@ window.addEventListener("resize", () => { onResize(); fitMap(); });
 if (window.ResizeObserver) new ResizeObserver(() => onResize()).observe($("view"));
 
 //----- Draw Loop -----||
-let lastBuild = 0, glKey = "";
+let glKey = "";
+// Adaptive 3D rate: after the first draw at a map size, and after each stroke, one draw
+// is timed for real (a 1-pixel readPixels waits for the GPU to finish). If the 3D view
+// is slow (weak GPU, phone, software rendering), it redraws only every few of those
+// costs while you paint, so the brush on the map stays responsive; it catches up when
+// the stroke ends. On a desktop GPU this is a few ms and the 3D view follows every dab.
+let glCost = 0, lastGLDraw = 0, measureGL = true, measuredFor = "";
 function glVisible() { return $("app").classList.contains("wide") || $("glPane").classList.contains("show"); }
 function mapVisible() { return $("app").classList.contains("wide") || $("mapPane").classList.contains("show"); }
 
 function frame(now) {
   requestAnimationFrame(frame);
   if (mapVisible()) {
-    if (mapDirty) { redrawOffscreen(); mapDirty = false; viewDirty = true; if (!stroke) updateHover(); }
+    if (redrawOffscreen()) { viewDirty = true; if (!stroke) updateHover(); }
     if (viewDirty) { drawMap(); viewDirty = false; }
   }
   if (gl && glVisible()) {
-    // While painting, rebuild the preview mesh a few times a second, not every frame.
-    let rebuilt = false;
-    if (meshDirty && (!stroke || now - lastBuild > 250)) { buildMesh(); meshDirty = false; lastBuild = now; rebuilt = true; }
-    const key = [cam.yaw, cam.pitch, cam.dist, ...cam.target, glCv.width, glCv.height, S.water].join(",");
-    if (rebuilt || key !== glKey) { glKey = key; drawGL(); }
+    // Only the changed rectangle goes to the GPU, so the 3D view follows the brush live.
+    const key = [cam.yaw, cam.pitch, cam.dist, ...cam.target, glCv.width, glCv.height, S.water, S.sea, S.mpp, S.maxH, S.w, S.h].join(",");
+    const want = dirtyGL[0] <= dirtyGL[2] || glRedraw || key !== glKey || !texH;
+    const wait = stroke && glCost > 30 && now - lastGLDraw < glCost * 4;
+    if (want && !wait) {
+      uploadTerrain(); glKey = key; glRedraw = false;
+      const sizeKey = S.w + "x" + S.h;
+      const timed = (measureGL || measuredFor !== sizeKey) && !stroke;
+      drawGL(timed);
+      if (timed) { measureGL = false; measuredFor = sizeKey; }
+      lastGLDraw = performance.now();
+    }
   }
 }
-function drawGL() {
+function drawGL(timed) {
   gl.viewport(0, 0, glCv.width, glCv.height);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  if (glTooBig || !texH) { updateGLNote(); return; }
+  const t0 = performance.now();
+  const mvp = cameraMVP();
   gl.useProgram(prog);
-  gl.uniformMatrix4fv(uMVP, false, cameraMVP());
-  gl.uniform1i(uFlat, 1); gl.uniform1f(uAlpha, 1);
-  gl.bindVertexArray(terrainVAO);
-  gl.drawArrays(gl.TRIANGLES, 0, terrainCount);
+  gl.uniformMatrix4fv(U.uMVP, false, mvp);
+  gl.uniform2i(U.uSize, S.w, S.h);
+  gl.uniform2i(U.uTile, tile.tx, tile.ty);
+  gl.uniform1i(U.uTilesX, tile.nx);
+  gl.uniform1f(U.uMpp, S.mpp); gl.uniform1f(U.uMaxH, S.maxH);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, texH);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, texB);
+  gl.bindVertexArray(gridVAO);
+  gl.drawElementsInstanced(gl.TRIANGLES, tile.count, gl.UNSIGNED_SHORT, 0, tile.nx * tile.ny);
   if (S.water) {
     // See-through water drawn last; no depth writes so it never hides the seabed.
+    const W = (S.w - 1) * S.mpp, Hm = (S.h - 1) * S.mpp, m = Math.max(W, Hm) * 0.02;
     gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false);
-    gl.uniform1i(uFlat, 0); gl.uniform1f(uAlpha, 0.55);
+    gl.useProgram(waterProg);
+    gl.uniformMatrix4fv(WU.uMVP, false, mvp);
+    gl.uniform4f(WU.uRect, -m, -m, W + m, Hm + m); gl.uniform1f(WU.uZ, S.sea);
     gl.bindVertexArray(waterVAO);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
     gl.depthMask(true); gl.disable(gl.BLEND);
   }
   gl.bindVertexArray(null);
+  if (timed) {
+    const px = new Uint8Array(4);
+    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);   // waits for the GPU
+    lastDrawMs = glCost = performance.now() - t0;
+  }
+  updateGLNote();
 }
 
-
 //----- Start -----||
-// Load order: v2 autosave, else a v1 autosave (converted once), else a fresh island.
-(function start() {
+// Load order: IndexedDB autosave, else an older localStorage autosave (v2, or v1
+// converted once), else a fresh island.
+(async function start() {
   let loaded = false, migrated = false;
-  try {
-    const raw = localStorage.getItem(SAVE_KEY);
-    if (raw) { loadProject(JSON.parse(raw)); loaded = true; }
-  } catch (e) { loaded = false; }
+  try { loaded = loadAutosave(await idbGet(IDB_KEY)); } catch (e) { loaded = false; }
+  if (!loaded) {
+    try {
+      const raw = localStorage.getItem(SAVE_KEY);
+      if (raw) { loadProject(JSON.parse(raw)); loaded = true; migrated = true; }
+    } catch (e) { loaded = false; }
+  }
   if (!loaded) {
     try {
       const old = Object.keys(localStorage).find((k) => k.endsWith(OLD_SAVE_SUFFIX));
@@ -1637,7 +1968,7 @@ function drawGL() {
   }
   if (!loaded) {
     // First visit (or nothing usable saved): a generated island to look at right away.
-    allocMap(S.size);
+    allocMap(S.w, S.h);
     const h = generate(1, 0.45, 0.45, true, 0);
     encodeFrom(h, autoBiomes(h, 2, 40, 78, 40));
   }
@@ -1646,8 +1977,9 @@ function drawGL() {
   updateUndoButtons();
   onResize(); fitMap(); fitCamera(); updateStats();
   if (!localStorage.getItem(SAVE_KEY + ".helped")) openModal("helpModal");
-  if (migrated) toast("Your v1 map was converted to the one-layer image");
+  if (migrated) toast("Loaded your saved map");
   if (!loaded || migrated) scheduleSave();
+  window.terrainMakerReady = true;
   requestAnimationFrame(frame);
 })();
 </script>
