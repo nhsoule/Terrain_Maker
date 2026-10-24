@@ -228,6 +228,7 @@
         <button id="vBiome" title="Biome layer over the relief (H toggles)">Biome</button>
         <input id="vOpacity" type="range" min="0.1" max="1" step="0.05" title="Biome layer opacity">
         <button id="vContours" title="Contour lines (K)">Contours</button>
+        <button id="vSlope" title="Slope: green walkable, yellow close, red too steep (J). Limit in Map settings.">Slope</button>
       </div>
     </div>
     <div id="glPane" class="pane">
@@ -272,6 +273,8 @@
       <button data-tool="noise"   title="Roughen: add natural detail (N)"><span class="ic">∿</span>Roughen<span class="k">N</span></button>
       <button data-tool="terrace" title="Terrace: stepped low-poly shelves (T)"><span class="ic">☰︎</span>Terrace<span class="k">T</span></button>
       <button data-tool="river"   title="Carve river: drag a path, it carves a downhill channel (C)"><span class="ic">〰︎</span>River<span class="k">C</span></button>
+      <button data-tool="range"   title="Mountain range: drag a path, it becomes a ridge with foothills (and a pass) (A)"><span class="ic">⛰︎</span>Range<span class="k">A</span></button>
+      <button data-tool="plateau" title="Plateau: raise to a flat top with steep sides (U)"><span class="ic">▭︎</span>Plateau<span class="k">U</span></button>
       <span class="sep"></span>
       <button data-tool="paint"   title="Biome brush (B)"><span class="ic">●︎</span>Biome<span class="k">B</span></button>
       <button data-tool="fill"    title="Fill a connected biome area (G)"><span class="ic">◧︎</span>Fill<span class="k">G</span></button>
@@ -331,6 +334,11 @@
     <label><span>Vertex size (bytes)</span><input id="setVBytes" type="number" min="4" max="64" step="1" inputmode="numeric"></label>
     <label><span>Show water in 3D</span><input id="setWater" type="checkbox"></label>
     <div class="note">Heights are stored in meters between Min and Max height (changing the range clamps, it never stretches the map). The export spreads its height steps over this range. <b>Auto ocean</b>: ground below sea level that connects to the map edge (or to painted Ocean) is ocean, so raising or lowering the coast moves the shoreline by itself; dips inland stay dry unless you paint them as Lake or Pond. Vertex size only feeds the memory numbers below (your engine's vertex format).</div>
+    <div class="sub">Slopes</div>
+    <label><span>Walkable up to (°)</span><input id="setSteep" type="number" min="5" max="80" step="1" inputmode="decimal"></label>
+    <label><span>Player can't climb steeper</span><input id="setFpClimb" type="checkbox"></label>
+    <label><span>Rough look on steep slopes (3D)</span><input id="setRough3D" type="checkbox"></label>
+    <div class="note">One angle for three things: the <b>Slope</b> view on the map (green walkable, yellow close to the limit, red too steep), the first person climb limit (you slide along instead of walking up it), and where the 3D preview turns rocky with rough facets. The rough look is preview only: the export is the plain height grid; use Rock biome (Auto biome does) so the game knows.</div>
     <div class="sub">First person (Player)</div>
     <label><span>Eye height (m)</span><input id="setEye" type="number" min="0.2" max="50" step="0.05" inputmode="decimal"></label>
     <label><span>Vertical FOV (°)</span><input id="setFov" type="number" min="10" max="150" step="1" inputmode="decimal"></label>
@@ -352,14 +360,29 @@
 <div id="genModal" class="modal">
   <div class="card">
     <div class="head"><span>Generate terrain</span><button id="gmClose" class="alt">Cancel</button></div>
-    <div class="note">A designed-looking base to sculpt on: big landforms from warped noise, ridged mountain ranges, then erosion that cuts gullies and settles slopes. Same seed + settings = same map, on every device. Undo brings the old map back.</div>
-    <label><span>Preset</span><select id="genPreset">
-      <option value="island">Island: sea all round, mountains inland</option>
-      <option value="continent">Continent / inland: mostly land, bays and lakes</option>
-      <option value="mountains">Mountains &amp; valleys: ranges, deep valleys</option>
-      <option value="hills">Rolling hills: gentle, open land</option>
+    <label><span>Generator</span><select id="genType">
+      <option value="world">World: ranges, plateaus, rivers (layered)</option>
+      <option value="classic">Classic: noise landforms + erosion</option>
     </select></label>
+    <div id="genWorldNote" class="note">Built in layers like real land: a coastline and broad lowland / plateau / highland regions, then 1-4 mountain ranges along curved ridgelines with foothills and low passes, rolling hills on the open land, a few terraced rock outcrops and small cliffs, river valleys cut by flowing water, then rivers and lakes. Open land is kept walkable; only range cores and outcrops get steep. Same seed + settings = same map, on every device. Undo brings the old map back.</div>
+    <div id="genClassicNote" class="note hide">A designed-looking base to sculpt on: big landforms from warped noise, ridged mountain ranges, then erosion that cuts gullies and settles slopes. Same seed + settings = same map, on every device. Undo brings the old map back.</div>
+    <label><span>Preset</span><select id="genPreset"></select></label>
     <label><span>Seed</span><input id="genSeed" type="number" step="1" inputmode="numeric"><button id="genRand" class="alt" style="min-width:0" title="Random seed">⚄︎</button></label>
+    <div id="genWorldBox">
+      <label><span>Mountain ranges</span><input id="genRanges" type="range" min="0" max="4" step="1"><b id="genRangesV" class="v"></b></label>
+      <label><span>Mountain height</span><input id="genMountH" type="range" min="0" max="1.6" step="0.05"><b id="genMountHV" class="v"></b></label>
+      <label><span>Roughness (hills)</span><input id="genRough" type="range" min="0" max="1.5" step="0.05"><b id="genRoughV" class="v"></b></label>
+      <label><span>Rock outcrops / small cliffs</span><input id="genOutc" type="range" min="0" max="1.5" step="0.05"><b id="genOutcV" class="v"></b></label>
+      <label><span>Erosion</span><input id="genWErosion" type="range" min="0" max="1.5" step="0.05"><b id="genWErosionV" class="v"></b></label>
+      <label><span>Rivers</span><input id="genRivers" type="range" min="0" max="12" step="1"><b id="genRiversV" class="v"></b></label>
+      <label><span>Lakes</span><input id="genLakes" type="range" min="0" max="8" step="1"><b id="genLakesV" class="v"></b></label>
+      <label><span>Rough facets on cliffs</span><input id="genJitter" type="checkbox" checked></label>
+      <div class="sub">Climate (for Auto biome)</div>
+      <label><span>Wind from (°, 270 = west)</span><input id="genWind" type="number" min="0" max="360" step="15" value="270" inputmode="decimal"></label>
+      <label><span>Moisture (-1 dry .. 1 wet)</span><input id="genMoist" type="number" min="-1" max="1" step="0.1" value="0" inputmode="decimal"></label>
+      <label><span>Biome region size (m)</span><input id="genRegion" type="number" min="40" max="3000" step="20" value="300" inputmode="decimal"></label>
+    </div>
+    <div id="genClassicBox" class="hide">
     <label><span>Feature size</span><input id="genSize" type="range" min="0.4" max="2" step="0.05" value="1"><b id="genSizeV" class="v"></b></label>
     <label><span>Mountains</span><input id="genMount" type="range" min="0" max="2" step="0.05"><b id="genMountV" class="v"></b></label>
     <label><span>Warp (flowing shapes)</span><input id="genWarp" type="range" min="0" max="1.2" step="0.05"><b id="genWarpV" class="v"></b></label>
@@ -371,6 +394,7 @@
       <option value="none">No falloff</option>
     </select></label>
     <label><span>Terraces (m, 0 = off)</span><input id="genTerr" type="number" min="0" max="100" step="1" value="0" inputmode="decimal"></label>
+    </div>
     <label><span>Auto biome after</span><input id="genAuto" type="checkbox" checked></label>
     <label><span>Only in selection</span><input id="genSel" type="checkbox"></label>
     <div id="genNote" class="note"></div>
@@ -382,14 +406,28 @@
 <div id="autoModal" class="modal">
   <div class="card">
     <div class="head"><span>Auto biome rules</span><button id="amClose" class="alt">Cancel</button></div>
-    <div class="note">Paints the biome layer from the terrain, top rule first. Heights are never touched. Hand-painted water (Lake, River, Pond, Swamp, Ocean) is kept unless you untick it.</div>
+    <div class="note">Paints the biome layer from the terrain. Heights are never touched. Hand-painted water (Lake, River, Pond, Swamp, Ocean) is kept unless you untick it.</div>
+    <label><span>Mode</span><select id="autoMode">
+      <option value="climate">Climate: whole regions from temperature and rain</option>
+      <option value="classic">Classic: rules and noise patches</option>
+    </select></label>
+    <div id="autoClimate">
+      <div class="note">Temperature falls with height (and to the north or south if you set it). Rain comes in on the wind: wet near water and on the windward side of mountains, dry behind them. A Whittaker-style table turns that into Desert, Plains, Forest, Swamp and Snow, then small pieces are merged so each biome forms whole regions.</div>
+      <label><span>Wind from (°, 270 = west)</span><input id="autoWind" type="number" min="0" max="360" step="15" value="270" inputmode="decimal"></label>
+      <label><span>Moisture (-1 dry .. 1 wet)</span><input id="autoMoist" type="number" min="-1" max="1" step="0.1" value="0" inputmode="decimal"></label>
+      <label><span>Region size (m)</span><input id="autoRegion" type="number" min="40" max="3000" step="20" value="300" inputmode="decimal"></label>
+      <label><span>Colder to the (north/south)</span><select id="autoLat"><option value="0">Neither</option><option value="1">North</option><option value="-1">South</option></select></label>
+      <label><span>Beaches</span><input id="autoBeach" type="checkbox" checked></label>
+    </div>
     <label><span>Rock: slope over (°)</span><input id="autoRock" type="number" min="5" max="85" step="1" value="36" inputmode="decimal"></label>
     <label><span>Snow: above (m)</span><input id="autoSnow" type="number" step="1" inputmode="decimal"></label>
     <label><span>Beach: up to (m over sea)</span><input id="autoBeachH" type="number" min="0" step="0.5" value="2.5" inputmode="decimal"></label>
     <label><span>Beach: within (m of water)</span><input id="autoBeachD" type="number" min="0" step="1" value="14" inputmode="decimal"></label>
+    <div id="autoClassic">
     <label><span>Swamp: amount (%)</span><input id="autoSwamp" type="number" min="0" max="100" step="1" value="0" inputmode="decimal"></label>
     <label><span>Forest: amount (%)</span><input id="autoForest" type="number" min="0" max="100" step="1" value="45" inputmode="decimal"></label>
     <label><span>Forest: patch size (m)</span><input id="autoPatch" type="number" min="10" max="2000" step="10" value="160" inputmode="decimal"></label>
+    </div>
     <div class="note">Below sea level becomes sandy sea floor (Desert; Auto ocean shows it as Ocean). Everything else that no rule takes is Plains.</div>
     <label><span>Apply to</span><select id="autoScope">
       <option value="all">The whole map</option>
@@ -456,13 +494,13 @@
     <ul>
       <li><b>Height</b>: meters, between Min and Max height (Map settings). Sculpt tools only change this layer.</li>
       <li><b>Biome</b>: one of 10 biomes per pixel: 0 Ocean, 1 Lake, 2 River, 3 Pond, 4 Swamp, 5 Desert, 6 Snow, 7 Plains, 8 Rock, 9 Forest (keys 1-9, 0). Biome tools only change this layer.</li>
-      <li>The buttons at the bottom right of the map switch the view: <b>Height</b> (shaded relief) or <b>Biome</b> (biome colors over the relief, opacity slider), and <b>Contours</b> (a line every few meters, every 5th darker).</li>
+      <li>The buttons at the bottom right of the map switch the view: <b>Height</b> (shaded relief) or <b>Biome</b> (biome colors over the relief, opacity slider), <b>Contours</b> (a line every few meters, every 5th darker, K) and <b>Slope</b> (J: green walkable, yellow close to the limit, red too steep; the limit is in Map settings, 35° by default).</li>
     </ul>
     <h3>Workflow</h3>
     <ol>
-      <li><b>Generate</b>: pick a preset (Island, Continent, Mountains &amp; valleys, Rolling hills) and a seed. Erosion runs in the background for a few seconds.</li>
+      <li><b>Generate</b>: the <b>World</b> generator builds the land in layers like the real thing: coastline and broad lowland / plateau / highland regions, 1-4 mountain ranges along curved ridgelines with foothills and low passes, rolling hills, a few terraced rock outcrops and small cliffs, valleys cut by flowing water, then rivers and lakes. Open land stays walkable. Presets: Island, Archipelago, Continent, Highlands; sliders for ranges, mountain height, roughness, outcrops, erosion, rivers, lakes and the climate. The older noise presets are under <b>Classic</b>. It takes a few seconds in the background.</li>
       <li><b>Sculpt</b> the big moves first with a large brush: Raise / Lower whole areas, <b>Flatten</b> plateaus and build sites, <b>Ramp</b> roads between them, <b>River</b> to carve valleys to the sea. Then <b>Smooth</b>, <b>Roughen</b> or <b>Terrace</b> for the finish.</li>
-      <li><b>Auto biome</b>: rock on steep slopes, snow up high, beaches by the water, forest patches. Re-run it after sculpting; your hand-painted water stays.</li>
+      <li><b>Auto biome</b> (Climate mode): temperature from height, rain from the wind (wet near water and on the windward side of mountains, dry in their rain shadow), so biomes come out as whole regions: forests, plains, a desert, swamps on wet lowland, snow up high, rock on steep faces, beaches. Wind, moisture and region size are in the dialog. Re-run it after sculpting; your hand-painted water stays. <b>Classic</b> mode is the old rules + noise patches.</li>
       <li><b>Biome</b> brush / <b>Fill</b> for the details: lakes, ponds, swamps, a desert.</li>
       <li><b>Player</b>: walk it at your game's eye height and FOV.</li>
     </ol>
@@ -474,6 +512,8 @@
       <li><b>Ramp (P)</b>: drag a line; it builds a smooth, evenly graded road / ramp from the start height to the end height. Size = road width, Falloff = how far the embankment blends out.</li>
       <li><b>Roughen (N)</b>: adds natural bumps (detail size in meters).</li>
       <li><b>Terrace (T)</b>: turns slopes into flat shelves with steep steps (step height in meters), a strong low-poly look.</li>
+      <li><b>Range (A)</b>: drag a path; it becomes a mountain range like the generator's: a ridged crest along the path with spurs, tapered ends and foothills, and a low pass in the middle (untick <b>pass</b>). Size = width of the steep core, Peak = height above the ground.</li>
+      <li><b>Plateau (U)</b>: raises only, to one flat top (the height where the stroke starts + Top, or the fixed Flatten height); the falloff makes the sides. Mesas and table land.</li>
       <li><b>River (C)</b>: drag a path. It carves a channel that always runs downhill (from the higher end to the lower end), with sloped banks, and paints it River. Size = channel width.</li>
       <li>Brush <b>Size</b> is in meters (each tool remembers its own), <b>Strength</b>, and <b>Falloff</b> (0 = hard edge, 1 = very soft). Pen pressure scales the strength.</li>
     </ul>
@@ -492,7 +532,7 @@
     <h3>First person (Player)</h3>
     <ul>
       <li>Press <b>Player</b>, then click / tap a spot on the map or in the 3D view. Desktop: click the 3D view to look with the mouse, <b>WASD</b> / arrows move, <b>Shift</b> sprints, <b>Space</b> jumps, <b>Esc</b> exits. Touch: left thumb joystick, drag on the right to look, Jump button.</li>
-      <li>You walk on the exact mesh; you wade, then swim in deep water. Eye height, FOV, speeds and clip planes are in Map settings. <b>Edge fog</b> fades the map edge into haze.</li>
+      <li>You walk on the exact mesh; you wade, then swim in deep water. Slopes steeper than the walkable angle (Map settings) can't be climbed: you slide along them (untick <b>Player can't climb steeper</b> to turn that off). Eye height, FOV, speeds and clip planes are in Map settings. <b>Edge fog</b> fades the map edge into haze.</li>
     </ul>
     <h3>Controls</h3>
     <ul>
@@ -700,6 +740,7 @@ function genCore() {
   // p: { w, h, mpp, seed, preset, size, warp, mount, edge, erosion, minH, maxH, sea, terraces }
   // Returns { h: Float32Array meters, ms: { noise, erosion } }.
   function generate(p, progress) {
+    if (p.gen === "world") return generateWorld(p, progress);
     const P = PRESETS[p.preset] || PRESETS.island;
     const w = p.w, hgt = p.h, mpp = p.mpp, seed = p.seed | 0, n = w * hgt;
     const size = p.size > 0 ? p.size : 1;
@@ -849,7 +890,520 @@ function genCore() {
     }
   }
 
-  return { generate, erode, terrace, noise, fbm, ridged, hash, rng, PRESETS };
+  //----- World generator: land shape, mountain ranges, regions, valleys, rivers -----
+  // Built in layers, like a designed map rather than one noise:
+  //   1. land mask (island / archipelago / continent / highlands) and a very low
+  //      frequency "region" field that steps into lowlands, plateaus and highlands;
+  //   2. 0-5 mountain ranges along curved spines, with foothills, spurs (ridged noise
+  //      only near the range) and low passes so you can always get across;
+  //   3. gentle rolling hills on the open land;
+  //   4. valleys: stream-power erosion on a coarse grid (water collects downhill and
+  //      cuts dendritic valleys), then droplet erosion for gullies;
+  //   5. rivers along the biggest drainage lines to the sea, a few lakes on them;
+  //   6. small terraced rock outcrops and cliffs in sparse patches, a slope cap so open
+  //      land stays walkable, optional rough facets on steep faces.
+  const WORLD_PRESETS = {
+    island:      { shape: "island",  ranges: 2, mountH: 1.0, plateau: 0.55, rough: 0.5, outcrops: 0.5, erosion: 0.8, rivers: 4, lakes: 2, lift: 0.0 },
+    archipelago: { shape: "archi",   ranges: 1, mountH: 0.8, plateau: 0.4,  rough: 0.5, outcrops: 0.6, erosion: 0.7, rivers: 3, lakes: 1, lift: 0.0 },
+    continent:   { shape: "coast",   ranges: 3, mountH: 1.0, plateau: 0.6,  rough: 0.5, outcrops: 0.5, erosion: 0.9, rivers: 6, lakes: 3, lift: 0.03 },
+    highlands:   { shape: "inland",  ranges: 3, mountH: 1.15, plateau: 0.9, rough: 0.6, outcrops: 0.7, erosion: 0.9, rivers: 5, lakes: 3, lift: 0.12 },
+  };
+  function makeHeapG(cap) {
+    const key = new Float64Array(cap), id = new Int32Array(cap);
+    let size = 0;
+    return {
+      get size() { return size; },
+      clear() { size = 0; },
+      push(k, v) {
+        let i = size++;
+        while (i > 0) { const p = (i - 1) >> 1; if (key[p] <= k) break; key[i] = key[p]; id[i] = id[p]; i = p; }
+        key[i] = k; id[i] = v;
+      },
+      pop() {
+        const top = id[0], k = key[--size], v = id[size];
+        let i = 0;
+        for (;;) {
+          let c = 2 * i + 1; if (c >= size) break;
+          if (c + 1 < size && key[c + 1] < key[c]) c++;
+          if (key[c] >= k) break;
+          key[i] = key[c]; id[i] = id[c]; i = c;
+        }
+        key[i] = k; id[i] = v;
+        return top;
+      },
+    };
+  }
+  // A field computed every `st` pixels and bilinearly interpolated (for smooth, low
+  // frequency layers: 16x fewer noise calls).
+  function coarseField(w, hgt, st, fn) {
+    const cw = Math.ceil((w - 1) / st) + 1, ch = Math.ceil((hgt - 1) / st) + 1, g = new Float32Array(cw * ch);
+    for (let j = 0; j < ch; j++) for (let i = 0; i < cw; i++) g[j * cw + i] = fn(Math.min(w - 1, i * st), Math.min(hgt - 1, j * st));
+    return (c, r) => {
+      const x = c / st, y = r / st, i = Math.min(cw - 2, x | 0), j = Math.min(ch - 2, y | 0), u = Math.min(1, x - i), v = Math.min(1, y - j), k = j * cw + i;
+      return (g[k] * (1 - u) + g[k + 1] * u) * (1 - v) + (g[k + cw] * (1 - u) + g[k + cw + 1] * u) * v;
+    };
+  }
+  // Mountain range along a spine (pixel coords). Adds to h. Returns masks via cb.
+  //   width: core half-width (m) at full height, peak: m, passes: [s, depth] list.
+  function rangeProfile(sp, peak, passes, seed) {
+    // height along the spine s = 0..1: tapered ends, slow variation, saddles at passes
+    return (s) => {
+      let k = peak * (0.62 + 0.38 * fbm(s * 3.1, 0.5, seed + 301, 3, 0.5) * 1.3) * sstep(0, 0.16, s) * sstep(0, 0.16, 1 - s);
+      for (const [ps, pd] of passes) k *= 1 - pd * Math.exp(-(((s - ps) / 0.045) ** 2));
+      return Math.max(0, k);
+    };
+  }
+  // Stamp ranges: for every pixel the nearest spine point (normalized distance t = d /
+  // local width) gives a concave massif, foothills and ridged spurs.
+  function stampRanges(h, w, hgt, mpp, spines, opt, M) {
+    const n = w * hgt, T = new Float32Array(n).fill(99), SV = new Float32Array(n), K = new Uint8Array(n).fill(255), E = new Float32Array(n);
+    const slope = Math.tan((opt.coreSlope || 30) * Math.PI / 180);
+    for (let q = 0; q < spines.length; q++) {
+      const sp = spines[q], pts = sp.pts, prof = sp.prof;
+      let maxW = 0;
+      for (let k = 0; k < pts.length; k++) { const wk = Math.max(sp.minW || 0, prof(k / (pts.length - 1)) / slope) + 40; sp.wid = sp.wid || []; sp.wid[k] = wk; if (wk > maxW) maxW = wk; }
+      const R = maxW * 2.4 / mpp;
+      for (let k = 0; k + 1 < pts.length; k++) {
+        const a = pts[k], b = pts[k + 1], vx = b[0] - a[0], vy = b[1] - a[1], L2 = Math.max(1e-9, vx * vx + vy * vy);
+        const x0 = Math.max(0, Math.floor(Math.min(a[0], b[0]) - R)), x1 = Math.min(w - 1, Math.ceil(Math.max(a[0], b[0]) + R));
+        const y0 = Math.max(0, Math.floor(Math.min(a[1], b[1]) - R)), y1 = Math.min(hgt - 1, Math.ceil(Math.max(a[1], b[1]) + R));
+        const s0 = k / (pts.length - 1), s1 = (k + 1) / (pts.length - 1);
+        for (let r = y0; r <= y1; r++) for (let c = x0; c <= x1; c++) {
+          const t = clamp(((c - a[0]) * vx + (r - a[1]) * vy) / L2, 0, 1);
+          const d = Math.hypot(c - (a[0] + t * vx), r - (a[1] + t * vy)) * mpp;
+          const wd = sp.wid[k] + (sp.wid[k + 1] - sp.wid[k]) * t, tn = d / wd, i = r * w + c;
+          if (tn >= 2.6) continue;
+          // keep the segment that gives the highest ground (continuous where ranges meet)
+          const sv = s0 + (s1 - s0) * t, e = prof(sv) * ((tn < 1 ? Math.pow(1 - tn, 1.55) : 0) + 0.16 * (1 - sstep(0.5, 2.5, tn))) + 1e-6 * (2.6 - tn);
+          if (K[i] === 255) { E[i] = e; T[i] = tn; SV[i] = sv; K[i] = q; continue; }
+          // smooth max, so crossing ranges and spine bends blend instead of creasing
+          const a0 = E[i], kk = 0.3 * Math.max(a0, e) + 1, hb = Math.max(kk - Math.abs(a0 - e), 0) / kk;
+          if (e > a0) { T[i] = tn; SV[i] = sv; K[i] = q; }
+          E[i] = Math.max(a0, e) + hb * hb * kk * 0.25;
+        }
+      }
+    }
+    const lam = opt.spur;     // spur wavelength, m
+    const bx = opt.box || [0, 0, w - 1, hgt - 1];
+    for (let r = bx[1]; r <= bx[3]; r++) for (let c = bx[0]; c <= bx[2]; c++) {
+      const i = r * w + c;
+      if (K[i] === 255) { M[i] = 0; continue; }
+      const e = E[i];
+      const x = c * mpp, y = (hgt - 1 - r) * mpp;
+      // The envelope E is continuous where ranges and segments meet; ridged noise (spurs,
+      // peaks along the crest) and uneven flanks only scale it, so no seams.
+      const sd = spines[0].seed, rid = ridged(x / lam, y / lam, sd + 9, 5, 0.5);
+      const fl = fbm(x / (lam * 1.3), y / (lam * 1.3), sd + 13, 4, 0.55);
+      h[i] += e * (0.62 + 0.62 * rid + 0.22 * fl);
+      M[i] = Math.max(M[i], sstep(0.04, 0.4, e / opt.top));
+    }
+  }
+  function makeSpine(w, hgt, mpp, land, rand, seed, idx, existing, opt) {
+    const Wm = (w - 1) * mpp, Hm = (hgt - 1) * mpp, Sz = Math.min(Wm, Hm);
+    for (let tries = 0; tries < 80; tries++) {
+      const c = 0.12 * w + rand() * 0.76 * w, r = 0.12 * hgt + rand() * 0.76 * hgt;
+      if (land(c | 0, r | 0) < opt.inland) continue;
+      let far = true;
+      for (const e of existing) for (const p of e.pts) if (Math.hypot(p[0] - c, p[1] - r) * mpp < Sz * 0.16) { far = false; break; }
+      if (!far) continue;
+      const L = Sz * (opt.lenLo + rand() * (opt.lenHi - opt.lenLo)), step = Math.max(mpp * 2, Sz / 90), nst = Math.max(6, Math.round(L / step));
+      const a0 = rand() * Math.PI * 2, bend = 0.9 + rand() * 0.8;
+      const pts = [];
+      // walk both ways from the middle
+      for (const dir of [1, -1]) {
+        let x = c, y = r, a = a0 + (dir < 0 ? Math.PI : 0);
+        const half = [];
+        for (let k = 0; k < nst / 2; k++) {
+          const s = k / nst;
+          const turn = fbm(s * 4 + idx * 7.1, dir * 3.3, seed + 211 + idx, 2, 0.5) * bend;
+          const ax = a + turn;
+          x += Math.cos(ax) * step / mpp; y -= Math.sin(ax) * step / mpp;
+          if (x < 2 || y < 2 || x > w - 3 || y > hgt - 3) break;
+          half.push([x, y]);
+        }
+        if (dir > 0) pts.push(...half.reverse(), [c, r]); else pts.push(...half);
+      }
+      if (pts.length < 6) continue;
+      return { pts };
+    }
+    return null;
+  }
+  // Stream-power valley carving on a coarse grid. Water from every cell flows to its
+  // steepest downhill neighbour (after filling pits by priority flood); cells that
+  // collect a lot of water are cut down towards their outlet (implicit, stable).
+  // Returns the drainage (area per cell, receiver, order) of the last pass.
+  function streamPower(hc, cw, ch, cell, sea, iters, K, progress, kMul, floorZ) {
+    const n = cw * ch, rec = new Int32Array(n), order = new Int32Array(n), A = new Float32Array(n), hf = new Float32Array(n), done = new Uint8Array(n);
+    const heap = makeHeapG(n), D8 = [[-1, 0, 1], [1, 0, 1], [0, -1, 1], [0, 1, 1], [-1, -1, Math.SQRT2], [1, -1, Math.SQRT2], [-1, 1, Math.SQRT2], [1, 1, Math.SQRT2]];
+    let cnt = 0;
+    for (let it = 0; it < iters; it++) {
+      done.fill(0); heap.clear(); cnt = 0;
+      for (let j = 0; j < ch; j++) for (let i = 0; i < cw; i++) {
+        const k = j * cw + i;
+        if (hc[k] <= sea || i === 0 || j === 0 || i === cw - 1 || j === ch - 1) { done[k] = 1; hf[k] = hc[k]; heap.push(hf[k], k); }
+      }
+      while (heap.size) {
+        const k = heap.pop(); order[cnt++] = k;
+        const i = k % cw, j = (k - i) / cw;
+        for (let q = 0; q < 8; q++) {
+          const x = i + D8[q][0], y = j + D8[q][1];
+          if (x < 0 || y < 0 || x >= cw || y >= ch) continue;
+          const m = y * cw + x;
+          if (done[m]) continue;
+          done[m] = 1; hf[m] = Math.max(hc[m], hf[k] + 1e-3); heap.push(hf[m], m);
+        }
+      }
+      for (let k = 0; k < n; k++) {
+        const i = k % cw, j = (k - i) / cw;
+        if (hc[k] <= sea || i === 0 || j === 0 || i === cw - 1 || j === ch - 1) { rec[k] = k; continue; }
+        let best = -1, bs = 0;
+        for (let q = 0; q < 8; q++) {
+          const m = (j + D8[q][1]) * cw + i + D8[q][0], s = (hf[k] - hf[m]) / D8[q][2];
+          if (s > bs) { bs = s; best = m; }
+        }
+        rec[k] = best < 0 ? k : best;
+      }
+      A.fill(1);
+      for (let q = cnt - 1; q >= 0; q--) { const k = order[q]; if (rec[k] !== k) A[rec[k]] += A[k]; }
+      if (it === iters - 1 && K <= 0) break;
+      for (let q = 0; q < cnt; q++) {
+        const k = order[q], r = rec[k];
+        if (r === k || hc[k] <= hc[r]) continue;
+        const dx = (k % cw) - (r % cw), dy = ((k / cw) | 0) - ((r / cw) | 0);
+        const F = K * (kMul ? kMul[k] : 1) * Math.sqrt(A[k] * cell * cell) / (Math.hypot(dx, dy) * cell);
+        hc[k] = (hc[k] + F * hc[r]) / (1 + F);
+        if (floorZ && hc[k] < floorZ[k]) hc[k] = floorZ[k];
+      }
+      if (progress) progress((it + 1) / iters);
+    }
+    return { rec, order, A, hf, cnt };
+  }
+  // Chaikin smoothing for D8 paths.
+  function chaikin(p, times) {
+    for (let t = 0; t < times; t++) {
+      if (p.length < 3) return p;
+      const o = [p[0]];
+      for (let k = 0; k + 1 < p.length; k++) {
+        const a = p[k], b = p[k + 1];
+        o.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25, a[2] * 0.75 + b[2] * 0.25], [a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75, a[2] * 0.25 + b[2] * 0.75]);
+      }
+      o.push(p[p.length - 1]);
+      p = o;
+    }
+    return p;
+  }
+  // Carve a river channel along pts ([col, row, widthFactor 0..1], source first). The bed
+  // never rises downstream. Sets wmask = 1 inside the channel.
+  function carveChannel(h, w, hgt, mpp, pts, wmask, sea) {
+    const bil = (x, y) => {
+      const c = clamp(x | 0, 0, w - 2), r = clamp(y | 0, 0, hgt - 2), u = clamp(x - c, 0, 1), v = clamp(y - r, 0, 1), i = r * w + c;
+      return (h[i] * (1 - u) + h[i + 1] * u) * (1 - v) + (h[i + w] * (1 - u) + h[i + w + 1] * u) * v;
+    };
+    const m = pts.length, bed = new Float32Array(m), hw = new Float32Array(m);
+    for (let k = 0; k < m; k++) {
+      const f = pts[k][2];
+      hw[k] = Math.max(1.2, (2.5 + 7 * f) / mpp);
+      const depth = 1.2 + 1.6 * f;
+      // the lowest ground across the channel, so the bed follows the valley floor
+      let z = bil(pts[k][0], pts[k][1]);
+      bed[k] = z - depth;
+      if (k) bed[k] = Math.min(bed[k], bed[k - 1] - 0.002 * mpp);
+    }
+    const bank = 4;
+    for (let k = 0; k + 1 < m; k++) {
+      const a = pts[k], b = pts[k + 1], vx = b[0] - a[0], vy = b[1] - a[1], L2 = Math.max(1e-9, vx * vx + vy * vy);
+      const R = Math.max(hw[k], hw[k + 1]) + bank;
+      const x0 = Math.max(0, Math.floor(Math.min(a[0], b[0]) - R)), x1 = Math.min(w - 1, Math.ceil(Math.max(a[0], b[0]) + R));
+      const y0 = Math.max(0, Math.floor(Math.min(a[1], b[1]) - R)), y1 = Math.min(hgt - 1, Math.ceil(Math.max(a[1], b[1]) + R));
+      for (let r = y0; r <= y1; r++) for (let c = x0; c <= x1; c++) {
+        const t = clamp(((c - a[0]) * vx + (r - a[1]) * vy) / L2, 0, 1);
+        const d = Math.hypot(c - (a[0] + t * vx), r - (a[1] + t * vy)), wk = hw[k] + (hw[k + 1] - hw[k]) * t;
+        if (d >= wk + bank) continue;
+        const bz = bed[k] + (bed[k + 1] - bed[k]) * t, i = r * w + c;
+        const floor = bz + 0.5 * Math.min(1, (d / wk) ** 2);
+        const target = d <= wk ? floor : floor + (h[i] - floor) * sstep(0, 1, (d - wk) / bank);
+        if (target < h[i]) h[i] = target;
+        if (d <= wk && h[i] > sea - 0.5) wmask[i] = 1;
+      }
+    }
+  }
+  function generateWorld(p, progress) {
+    const P = WORLD_PRESETS[p.preset] || WORLD_PRESETS.island;
+    const g = (k) => (p[k] !== undefined && p[k] !== null && p[k] !== "" ? +p[k] : P[k]);
+    const w = p.w, hgt = p.h, mpp = p.mpp, seed = p.seed | 0, n = w * hgt;
+    const sea = p.sea, Rt = Math.max(10, p.maxH - sea), deep = Math.max(1, sea - p.minH);
+    const Wm = (w - 1) * mpp, Hm = (hgt - 1) * mpp, Sz = Math.min(Wm, Hm);
+    const rand = rng(seed * 9973 + 17);
+    const nRanges = clamp(Math.round(g("ranges")), 0, 6), mountH = clamp(g("mountH"), 0, 2), plateau = clamp(g("plateau"), 0, 1);
+    const rough = clamp(g("rough"), 0, 1.5), outc = clamp(g("outcrops"), 0, 1.5), er = clamp(g("erosion"), 0, 2);
+    const nRivers = clamp(Math.round(g("rivers")), 0, 20), nLakes = clamp(Math.round(g("lakes")), 0, 10), lift = g("lift") || 0;
+    const t0 = Date.now(), prog = (f, what) => progress && progress(f, what);
+    prog(0, "land shape");
+    // 1. Land mask (> 0 is land) and the region field, on a coarse grid.
+    const side = hash(seed, 99, 5) & 3, blobs = [];
+    if (P.shape === "archi") {
+      // one main island plus several smaller ones, kept apart so there is sea between them
+      const nb = 5 + (hash(seed, 3, 9) % 3);
+      for (let tries = 0; blobs.length < nb && tries < 400; tries++) {
+        const big = blobs.length === 0, rb = big ? 0.15 + 0.04 * rand() : 0.06 + 0.06 * rand(), m = rb + (big ? 0.14 : 0.1), b = [m + (1 - 2 * m) * rand(), m + (1 - 2 * m) * rand(), rb];
+        if (blobs.every((o) => Math.hypot(o[0] - b[0], o[1] - b[1]) > (o[2] + b[2]) + 0.06)) blobs.push(b);
+      }
+    }
+    const st = Math.max(2, Math.round(8 / mpp)) | 0;
+    const landF = coarseField(w, hgt, st, (c, r) => {
+      const x = c * mpp, y = (hgt - 1 - r) * mpp, u = x / Sz, v = y / Sz;
+      const qx = fbm(u * 1.6 + 3.1, v * 1.6 + 1.7, seed + 11, 3, 0.5), qy = fbm(u * 1.6 - 5.2, v * 1.6 + 8.3, seed + 23, 3, 0.5);
+      const uu = u + 0.12 * qx, vv = v + 0.12 * qy;
+      const nz = 0.24 * fbm(uu * 2.4, vv * 2.4, seed + 31, 5, 0.5);
+      const ex = x / Wm, ey = y / Hm, edge = Math.min(ex, ey, 1 - ex, 1 - ey);       // 0 at the map edge
+      let l;
+      if (P.shape === "island") {
+        const dx = (x / Wm - 0.5) * 2 + 0.25 * qx, dy = (y / Hm - 0.5) * 2 + 0.25 * qy;
+        l = 0.72 - Math.hypot(dx, dy) + nz;
+      } else if (P.shape === "archi") {
+        l = -0.4;
+        // a finer warp too, so the small islands get bays and capes instead of round domes
+        const ax = 0.11 * qx + 0.05 * fbm(u * 6 + 2.3, v * 6, seed + 51, 3, 0.5), ay = 0.11 * qy + 0.05 * fbm(u * 6, v * 6 - 4.1, seed + 53, 3, 0.5);
+        for (const b of blobs) l = Math.max(l, (b[2] - Math.hypot(ex - b[0] + ax, ey - b[1] + ay)) * 2.4);
+        l += nz * 0.6;
+      } else {
+        const e = side === 0 ? ey : side === 1 ? 1 - ey : side === 2 ? ex : 1 - ex;
+        l = P.shape === "inland" ? 0.35 + (e - 0.12) * 1.2 + nz : (e - 0.28) * 1.6 + nz;
+      }
+      if (P.shape !== "inland" && P.shape !== "coast") l -= 0.9 * (1 - sstep(0.02, 0.12, edge));
+      return l;
+    });
+    const regF = coarseField(w, hgt, st, (c, r) => {
+      const x = c * mpp, y = (hgt - 1 - r) * mpp, u = x / Sz, v = y / Sz;
+      const e = 0.5 + 0.55 * fbm(u * 1.3 + 0.21 * fbm(u * 2 + 9, v * 2, seed + 41, 2, 0.5), v * 1.3, seed + 43, 4, 0.5);
+      // stepped into 3 levels (lowland / plateau / highland) with soft escarpments
+      const z = clamp(e, 0, 1) * 2.6, fl = Math.floor(z), fr = z - fl;
+      const stepped = (fl + sstep(0.25, 1.0, fr)) / 2.6;
+      return clamp(e, 0, 1) * (1 - plateau) + stepped * plateau;
+    });
+    const h = new Float32Array(n), M = new Float32Array(n), Lf = new Float32Array(n);
+    for (let r = 0; r < hgt; r++) {
+      for (let c = 0; c < w; c++) {
+        const i = r * w + c, l = landF(c, r), reg = regF(c, r);
+        Lf[i] = l;
+        if (l >= 0) {
+          const inland = sstep(0, 0.32, l);
+          h[i] = sea + 0.6 + Rt * (0.015 + inland * (0.05 + lift + reg * (0.3 + lift)));
+        } else {
+          h[i] = sea - 0.4 - deep * 0.92 * sstep(0, 0.35, -l);
+        }
+      }
+    }
+    prog(0.08, "mountain ranges");
+    // 2. Mountain ranges
+    const spines = [];
+    const landAt = (c, r) => Lf[clamp(r, 0, hgt - 1) * w + clamp(c, 0, w - 1)];
+    for (let k = 0; k < nRanges; k++) {
+      const s = makeSpine(w, hgt, mpp, landAt, rand, seed, k, spines, { inland: 0.18, lenLo: 0.45, lenHi: 0.85 });
+      if (!s) break;
+      const peak = Rt * mountH * (0.62 + 0.3 * rand());
+      const np = 1 + (rand() < 0.6 ? 1 : 0), passes = [];
+      for (let q = 0; q < np; q++) passes.push([np === 1 ? 0.35 + 0.3 * rand() : (q ? 0.62 : 0.28) + 0.12 * rand(), 0.4 + 0.15 * rand()]);
+      s.seed = seed + 1000 + k * 77; s.peak = peak; s.passes = passes;
+      s.prof = rangeProfile(s, peak, passes, s.seed);
+      spines.push(s);
+    }
+    stampRanges(h, w, hgt, mpp, spines, { top: Math.max(1, Rt * mountH), coreSlope: 37, spur: Math.max(60, Rt * mountH * 1.6) }, M);
+    // under the sea the ranges sink
+    for (let i = 0; i < n; i++) if (Lf[i] < 0 && M[i] > 0) h[i] = Math.min(h[i], sea - 0.4 + (h[i] - sea) * sstep(-0.12, 0, Lf[i]));
+    prog(0.16, "hills");
+    // 3. Rolling hills on open land (low, broad: walkable), a little more in the highlands.
+    const hillA = Rt * 0.11 * rough;
+    for (let r = 0; r < hgt; r++) {
+      const y = (hgt - 1 - r) * mpp;
+      for (let c = 0; c < w; c++) {
+        const i = r * w + c, x = c * mpp;
+        if (Lf[i] < -0.05) continue;
+        const k = sstep(-0.05, 0.25, Lf[i]) * (1 - 0.6 * M[i]);
+        if (k <= 0) continue;
+        h[i] += k * (hillA * (fbm(x / 300, y / 300, seed + 61, 3, 0.45) + 0.35 * fbm(x / 95, y / 95, seed + 62, 2, 0.5)) + Rt * 0.08 * fbm(x / 900, y / 900, seed + 63, 3, 0.5));
+      }
+      if ((r & 63) === 0) prog(0.16 + 0.1 * r / hgt, "hills");
+    }
+    const tShape = Date.now() - t0, t1 = Date.now();
+    // 4. Valleys: stream power on a coarse grid (about 512 cells across), added back as a
+    //    smooth difference so the full-resolution detail stays.
+    const f = Math.max(1, Math.round(Math.max(w, hgt) / 512)), cw = Math.ceil((w - 1) / f) + 1, ch = Math.ceil((hgt - 1) / f) + 1;
+    const hc = new Float32Array(cw * ch);
+    for (let j = 0; j < ch; j++) for (let i = 0; i < cw; i++) {
+      // average of the f x f block
+      let s = 0, m = 0;
+      for (let y = j * f - (f >> 1); y <= j * f + (f >> 1); y++) for (let x = i * f - (f >> 1); x <= i * f + (f >> 1); x++) {
+        if (x < 0 || y < 0 || x >= w || y >= hgt) continue; s += h[y * w + x]; m++;
+      }
+      hc[j * cw + i] = s / m;
+    }
+    const hc0 = Float32Array.from(hc), kMul = new Float32Array(cw * ch), floorZ = new Float32Array(cw * ch);
+    for (let j = 0; j < ch; j++) for (let i = 0; i < cw; i++) {
+      const k = j * cw + i, m = M[Math.min(hgt - 1, j * f) * w + Math.min(w - 1, i * f)];
+      kMul[k] = 0.3 + 0.7 * m;                                    // open land: gentle valleys only
+      floorZ[k] = Math.max(sea + 0.3, hc0[k] - (3 + Rt * 0.06 + Rt * 0.3 * m) * er);
+      if (hc0[k] <= sea) floorZ[k] = -1e9;
+    }
+    const iters = er > 0 ? Math.round(6 + 26 * er) : 1;
+    const dr = streamPower(hc, cw, ch, f * mpp, sea, Math.max(1, iters), er > 0 ? 0.0011 : 0, (q) => prog(0.27 + 0.33 * q, "valleys"), kMul, floorZ);
+    for (let r = 0; r < hgt; r++) for (let c = 0; c < w; c++) {
+      const x = c / f, y = r / f, i = Math.min(cw - 2, x | 0), j = Math.min(ch - 2, y | 0), u = x - i, v = y - j, k = j * cw + i;
+      const d0 = hc[k] - hc0[k], d1 = hc[k + 1] - hc0[k + 1], d2 = hc[k + cw] - hc0[k + cw], d3 = hc[k + cw + 1] - hc0[k + cw + 1];
+      h[r * w + c] += (d0 * (1 - u) + d1 * u) * (1 - v) + (d2 * (1 - u) + d3 * u) * v;
+    }
+    // droplets for gullies (lighter than the classic generator)
+    if (er > 0) erode(h, w, hgt, mpp, er * 0.45, seed, (q, what) => prog(0.6 + 0.2 * q, what));
+    const tErode = Date.now() - t1;
+    // 5. Rivers along the biggest drainage lines, from the sea up into the hills.
+    prog(0.8, "rivers");
+    const water = new Uint8Array(n);
+    const { rec, A } = dr;
+    let landCells = 0;
+    for (let k = 0; k < cw * ch; k++) if (hc[k] > sea) landCells++;
+    const mouths = [];
+    const onEdge = (k) => { const i = k % cw, j = (k - i) / cw; return i === 0 || j === 0 || i === cw - 1 || j === ch - 1; };
+    // river mouths: into the sea, or off the map edge (inland maps)
+    for (let k = 0; k < cw * ch; k++) { const r = rec[k]; if (r !== k && hc[k] > sea && (hc[r] <= sea || onEdge(r))) mouths.push(k); }
+    mouths.sort((a, b) => A[b] - A[a]);
+    const rivers = [], minA = Math.max(30, landCells * 0.012), headA = Math.max(12, landCells * 0.0025);
+    const donors = (k) => { const out = [], i = k % cw, j = (k - i) / cw; for (let y = j - 1; y <= j + 1; y++) for (let x = i - 1; x <= i + 1; x++) { if (x < 0 || y < 0 || x >= cw || y >= ch) continue; const m = y * cw + x; if (m !== k && rec[m] === k) out.push(m); } return out; };
+    for (const m0 of mouths) {
+      if (rivers.length >= nRivers || A[m0] < minA) break;
+      const mi = m0 % cw, mj = (m0 - mi) / cw;
+      if (rivers.some((rv) => Math.hypot(rv.mouth[0] - mi, rv.mouth[1] - mj) * f * mpp < Sz * 0.1)) continue;
+      const path = [];
+      let k = m0;
+      const Amax = A[m0];
+      for (let guard = 0; guard < cw * ch; guard++) {
+        const i = k % cw, j = (k - i) / cw;
+        path.push([i * f, j * f, Math.sqrt(A[k] / Amax)]);
+        const ds = donors(k);
+        if (!ds.length) break;
+        let best = ds[0];
+        for (const d of ds) if (A[d] > A[best]) best = d;
+        if (A[best] < headA) break;
+        k = best;
+      }
+      if (path.length * f * mpp < Sz * 0.12) continue;
+      // one step out into the sea so the river meets it
+      const r0 = rec[m0], ri = r0 % cw, rj = (r0 - ri) / cw;
+      path.unshift([ri * f, rj * f, 1]);
+      const pts = chaikin(path.reverse(), 3);
+      // gentle meanders: shift sideways by a slow noise, less where the valley is steep
+      const sh = pts.map((q) => q.slice());
+      for (let k = 1; k + 1 < pts.length; k++) {
+        const a = pts[k - 1], b = pts[k + 1], tx = b[0] - a[0], ty = b[1] - a[1], tl = Math.hypot(tx, ty) || 1;
+        const amp = (12 + 22 * pts[k][2]) / mpp * Math.min(1, k / 8) * Math.min(1, (pts.length - 1 - k) / 8);
+        const o = amp * fbm(k * mpp * 0.35 / 70, rivers.length * 5.3, seed + 333, 2, 0.5) * 2;
+        sh[k][0] = clamp(pts[k][0] - ty / tl * o, 1, w - 2); sh[k][1] = clamp(pts[k][1] + tx / tl * o, 1, hgt - 2);
+      }
+      rivers.push({ mouth: [mi, mj], pts: sh });
+    }
+    for (const rv of rivers) carveChannel(h, w, hgt, mpp, rv.pts, water, sea);
+    // Lakes: a bowl on the middle course of a river, on the flattest spot.
+    let lakes = 0;
+    const lakeAt = [];
+    for (let q = 0; q < rivers.length * 3 && lakes < nLakes; q++) {
+      const rv = rivers[q % rivers.length], pts = rv.pts;
+      const lo = Math.floor(pts.length * (0.22 + 0.14 * (Math.floor(q / rivers.length)))), hi = Math.floor(pts.length * (0.55 + 0.1 * Math.floor(q / rivers.length)));
+      const Rl = (55 + 70 * rand()) / mpp;
+      let best = -1, bestRel = Infinity;
+      for (let k = lo; k < hi; k += 3) {
+        const c = pts[k][0] | 0, r = pts[k][1] | 0;
+        if (c < Rl + 3 || r < Rl + 3 || c > w - Rl - 4 || r > hgt - Rl - 4) continue;
+        if (lakeAt.some((L) => Math.hypot(L[0] - c, L[1] - r) < (L[2] + Rl) * 2.2)) continue;
+        let mn = Infinity, mx = -Infinity;
+        for (let a = 0; a < 16; a++) { const z = h[Math.round(r + Math.sin(a / 16 * 6.283) * Rl) * w + Math.round(c + Math.cos(a / 16 * 6.283) * Rl)]; if (z < mn) mn = z; if (z > mx) mx = z; }
+        if (mn < sea + 1.5) continue;
+        if (mx - mn < bestRel) { bestRel = mx - mn; best = k; }
+      }
+      if (best < 0 || bestRel > Rt * 0.12) continue;
+      const c0 = pts[best][0], r0 = pts[best][1];
+      // the level: the lowest ground on the rim (the lake spills there, into the river)
+      let rim = Infinity;
+      for (let a = 0; a < 32; a++) { const z = h[Math.round(r0 + Math.sin(a / 32 * 6.283) * Rl) * w + Math.round(c0 + Math.cos(a / 32 * 6.283) * Rl)]; if (z < rim) rim = z; }
+      const level = rim - 0.3, depth = 2.5 + Rl * mpp * 0.035;
+      for (let r = Math.floor(r0 - Rl * 1.5); r <= Math.ceil(r0 + Rl * 1.5); r++) for (let c = Math.floor(c0 - Rl * 1.5); c <= Math.ceil(c0 + Rl * 1.5); c++) {
+        if (c < 0 || r < 0 || c >= w || r >= hgt) continue;
+        const ang = Math.atan2(r - r0, c - c0), Rk = Rl * (1 + 0.28 * fbm(Math.cos(ang) * 1.3 + q, Math.sin(ang) * 1.3, seed + 501, 2, 0.5));
+        const d = Math.hypot(c - c0, r - r0) / Rk, i = r * w + c;
+        if (d < 1) { h[i] = Math.min(h[i], level - depth * (1 - d * d) - 0.4); water[i] = 2; }
+        else if (d < 1.35) { const z = level + (h[i] - level) * sstep(1, 1.35, d); if (z < h[i] && water[i] !== 1) h[i] = Math.max(z, level + 0.2); }
+      }
+      lakeAt.push([c0, r0, Rl]); lakes++;
+    }
+    prog(0.86, "outcrops and cliffs");
+    // 6. Small terraced rock outcrops and cliffs: sparse patches in the open land and on
+    //    the mid slopes of the ranges (not in rivers or lakes).
+    const O = new Uint8Array(n);
+    if (outc > 0) {
+      const step = Math.max(1.5, Rt * 0.018);
+      for (let r = 0; r < hgt; r++) {
+        const y = (hgt - 1 - r) * mpp;
+        for (let c = 0; c < w; c++) {
+          const i = r * w + c;
+          if (water[i] || h[i] < sea + 1) continue;
+          const x = c * mpp;
+          const patch = sstep(0.42 - 0.12 * outc, 0.62 - 0.12 * outc, fbm(x / 420, y / 420, seed + 71, 3, 0.5) + 0.25 * M[i] * (1 - M[i]) * 4);
+          if (patch <= 0) continue;
+          const coreFree = 1 - sstep(0.55, 0.85, M[i]);
+          const v = fbm(x / 60, y / 60, seed + 72, 3, 0.5), m = patch * coreFree * sstep(sea + 1, sea + 4, h[i]);
+          if (m <= 0.05 || v < 0.15) continue;
+          // shelves: a first step with a cliff edge, sometimes a second one on top
+          const lv = sstep(0.18, 0.26, v) * 0.6 + sstep(0.38, 0.45, v) * 0.4;
+          if (lv <= 0) continue;
+          O[i] = 1;
+          h[i] += lv * step * (2 + 2.5 * outc) * Math.min(1, m * 1.5);
+        }
+        if ((r & 63) === 0) prog(0.86 + 0.06 * r / hgt, "outcrops and cliffs");
+      }
+    }
+    // Slope cap: open land (not range cores, outcrops keep their steps) relaxes to the
+    // walkable angle, so lowlands and passes stay traversable.
+    const capT = Math.tan(32 * Math.PI / 180) * mpp, steepT = Math.tan(60 * Math.PI / 180) * mpp;
+    const tmp = new Float32Array(n), tal = new Float32Array(n);
+    for (let i = 0; i < n; i++) tal[i] = M[i] > 0.5 ? steepT : capT;
+    // outcrops keep their steps (a pixel margin around them too)
+    for (let r = 1; r < hgt - 1; r++) for (let c = 1; c < w - 1; c++) { const i = r * w + c; if (O[i] || O[i - 1] || O[i + 1] || O[i - w] || O[i + w]) tal[i] = steepT; }
+    for (let pass = 0; pass < 10; pass++) {
+      tmp.fill(0);
+      for (let r = 1; r < hgt - 1; r++) for (let c = 1; c < w - 1; c++) {
+        const i = r * w + c, z = h[i], t = tal[i];
+        let jm = -1, dm = t;
+        if (z - h[i - 1] > dm) { dm = z - h[i - 1]; jm = i - 1; }
+        if (z - h[i + 1] > dm) { dm = z - h[i + 1]; jm = i + 1; }
+        if (z - h[i - w] > dm) { dm = z - h[i - w]; jm = i - w; }
+        if (z - h[i + w] > dm) { dm = z - h[i + w]; jm = i + w; }
+        if (jm >= 0 && !water[jm] && !water[i]) { const m = (dm - t) * 0.25; tmp[i] -= m; tmp[jm] += m; }
+      }
+      for (let i = 0; i < n; i++) h[i] += tmp[i];
+    }
+    // Rough facets on steep faces (a low-poly rocky look); off with jitter = false.
+    if (p.jitter !== false) {
+      const src = Float32Array.from(h);
+      for (let r = 1; r < hgt - 1; r++) for (let c = 1; c < w - 1; c++) {
+        const i = r * w + c;
+        if (water[i]) continue;
+        const gx = (src[i + 1] - src[i - 1]) / (2 * mpp), gy = (src[i + w] - src[i - w]) / (2 * mpp), s = Math.hypot(gx, gy);
+        const k = sstep(0.58, 1.1, s);       // ~30 .. 48 degrees
+        if (k <= 0) continue;
+        const jit = ((hash(c, r, seed + 91) & 1023) / 1023 - 0.5) * 1.6 + 0.8 * noise(c * mpp / 9, r * mpp / 9, seed + 92);
+        h[i] += k * jit * Math.min(2.2, 0.5 + mpp * 0.6);
+      }
+    }
+    // Keep the peaks under Max height with a soft knee.
+    const knee = sea + Rt * 0.86, room = p.maxH - knee;
+    for (let i = 0; i < n; i++) {
+      let z = h[i];
+      if (z > knee) z = knee + room * (1 - Math.exp(-(z - knee) / room));
+      h[i] = clamp(z, p.minH, p.maxH);
+    }
+    prog(1, "done");
+    return { h, water, ms: { noise: tShape, erosion: tErode }, info: { ranges: spines.length, passes: spines.reduce((a, s) => a + s.passes.length, 0), rivers: rivers.length, lakes } };
+  }
+
+  return { generate, generateWorld, stampRanges, rangeProfile, erode, terrace, noise, fbm, ridged, hash, rng, PRESETS, WORLD_PRESETS };
 }
 const GEN = genCore();   // main-thread copy (noise for brushes / auto biome; fallback generator)
 
@@ -924,6 +1478,16 @@ const S = {
   view: "biome",      // "biome" (colors over relief) or "height" (relief only)
   opacity: 0.85,      // biome layer opacity
   contours: false,    // contour lines
+  slopeView: false,   // slope overlay (green walkable, yellow, red too steep)
+  // Slopes
+  steep: 35,          // walkable limit, degrees: slope overlay, first person climb limit, rough look
+  fpClimb: true,      // first person: can't walk up slopes steeper than "steep"
+  rough3D: true,      // 3D preview: rock color and facet jitter on steep slopes
+  // Climate (Auto biome, climate mode)
+  wind: 270,          // wind comes FROM this compass direction, degrees (270 = west)
+  moist: 0,           // -1 dry .. +1 wet
+  region: 300,        // biome region size, meters
+  lat: 0,             // north-south temperature gradient: 0 none, + = colder north, - = colder south
 };
 // The layers, row-major, row 0 = north (top):
 //   H   height in meters (float)                    <- sculpt tools
@@ -938,12 +1502,15 @@ let tool = "raise";
 let biomeSel = B_PLAINS;
 // Brush settings. Size is the diameter in meters, remembered per tool.
 const brush = {
-  sizes: { raise: 60, lower: 60, smooth: 40, flatten: 40, ramp: 14, noise: 60, terrace: 80, river: 10, paint: 24, select: 80 },
+  sizes: { raise: 60, lower: 60, smooth: 40, flatten: 40, ramp: 14, noise: 60, terrace: 80, river: 10, range: 300, plateau: 120, paint: 24, select: 80 },
   str: 0.5, soft: 0.6,
   flatH: 30, flatFixed: false,   // Flatten target (typed / sampled) and whether to use it
   terrStep: 6,                    // Terrace step height (m)
   riverDepth: 2.5,                // River channel depth (m)
   noiseM: 30,                     // Roughen detail size (m)
+  rangeH: 90,                     // Range tool: peak height above the ground (m)
+  rangePass: true,                // Range tool: a low pass in the middle
+  platH: 12,                      // Plateau: height of the top above where the stroke starts (m)
 };
 let showChunks = false;
 let viewDirty = true, glRedraw = true;
@@ -1027,7 +1594,7 @@ function b64ToBytes(b64) {
   return u8;
 }
 
-const VIEW_KEYS = ["view", "opacity", "contours"];
+const VIEW_KEYS = ["view", "opacity", "contours", "slopeView"];
 function settingsJSON() { return { ...S }; }
 const numOr = (v, lo, hi, d) => v !== null && v !== undefined && v !== "" && Number.isFinite(+v) ? clamp(+v, lo, hi) : d;
 // legacy: settings from a one-image map, where heights started at 0.
@@ -1049,6 +1616,12 @@ function applySettings(st, legacy) {
     view: st.view === "height" || st.view === "biome" ? st.view : S.view,
     opacity: numOr(st.opacity, 0.1, 1, S.opacity),
     contours: typeof st.contours === "boolean" ? st.contours : S.contours,
+    slopeView: typeof st.slopeView === "boolean" ? st.slopeView : S.slopeView,
+    steep: numOr(st.steep, 5, 80, S.steep),
+    fpClimb: typeof st.fpClimb === "boolean" ? st.fpClimb : S.fpClimb,
+    rough3D: typeof st.rough3D === "boolean" ? st.rough3D : S.rough3D,
+    wind: numOr(st.wind, 0, 360, S.wind), moist: numOr(st.moist, -1, 1, S.moist),
+    region: numOr(st.region, 20, 5000, S.region), lat: numOr(st.lat, -1, 1, S.lat),
   });
 }
 // Older .json projects (and old localStorage autosaves): v1 had separate 16-bit height
@@ -1367,10 +1940,10 @@ function waterRenderSurface() {
 // covers the same ground at any m/px. A stroke is one undo step: pushUndo() at the start
 // keeps the untouched layers, which Roughen and Terrace also use as their base (so going
 // over the same spot twice in one stroke doesn't stack).
-const HEIGHT_TOOLS = new Set(["raise", "lower", "smooth", "flatten", "ramp", "noise", "terrace", "river"]);
-const PATH_TOOLS = new Set(["ramp", "river"]);
-const STRENGTH_TOOLS = new Set(["raise", "lower", "smooth", "flatten", "noise", "terrace"]);
-const SOFT_TOOLS = new Set(["raise", "lower", "smooth", "flatten", "noise", "terrace", "ramp", "river", "select"]);
+const HEIGHT_TOOLS = new Set(["raise", "lower", "smooth", "flatten", "ramp", "noise", "terrace", "river", "range", "plateau"]);
+const PATH_TOOLS = new Set(["ramp", "river", "range"]);
+const STRENGTH_TOOLS = new Set(["raise", "lower", "smooth", "flatten", "noise", "terrace", "plateau"]);
+const SOFT_TOOLS = new Set(["raise", "lower", "smooth", "flatten", "noise", "terrace", "ramp", "river", "select", "plateau"]);
 let stroke = null;
 const brushSize = () => brush.sizes[tool] || 40;
 const brushRpx = () => Math.max(0.5, brushSize() / 2 / S.mpp);
@@ -1415,6 +1988,7 @@ function strokeBegin(x, y, opt) {
     tool: t, last: [x, y], pts: [[x, y]], end: [x, y], changed: false, erase: !!opt.alt,
     base: undoStack[undoStack.length - 1].H,
     target: brush.flatFixed ? brush.flatH : heightAt(x, y), hA: heightAt(x, y),
+    plat: (brush.flatFixed ? brush.flatH : heightAt(x, y)) + (brush.flatFixed ? 0 : brush.platH),
     mask: t === "noise" || t === "terrace" ? new Float32Array(S.w * S.h) : null,
   };
   if (PATH_TOOLS.has(t)) { viewDirty = true; return; }
@@ -1425,7 +1999,7 @@ function strokeMove(x, y, pressure) {
   if (!s) return;
   if (PATH_TOOLS.has(s.tool)) {
     const l = s.pts[s.pts.length - 1];
-    if (s.tool === "river" && Math.hypot(x - l[0], y - l[1]) >= 1.5) s.pts.push([x, y]);
+    if ((s.tool === "river" || s.tool === "range") && Math.hypot(x - l[0], y - l[1]) >= 1.5) s.pts.push([x, y]);
     s.end = [x, y]; viewDirty = true; glRedraw = true;
     return;
   }
@@ -1445,6 +2019,7 @@ function strokeEnd() {
   stroke = null;
   if (s.tool === "ramp") s.changed = applyRamp(s.pts[0], s.end, s.hA, brush.flatFixed ? brush.flatH : heightAt(s.end[0], s.end[1]), false);
   else if (s.tool === "river") s.changed = carveRiver(s.pts.concat([s.end]));
+  else if (s.tool === "range") s.changed = applyRange(s.pts.concat([s.end]));
   if (!s.changed) { undoStack.pop(); updateUndoButtons(); viewDirty = true; glRedraw = true; return; }
   touched(false);
 }
@@ -1478,6 +2053,13 @@ function stampAt(cx, cy, pr) {
         case "raise": H[i] = Math.min(hi, H[i] + rate * wt); break;
         case "lower": H[i] = Math.max(lo, H[i] - rate * wt); break;
         case "flatten": H[i] += (s.target - H[i]) * Math.min(1, wt * str * 0.6); break;
+        case "plateau": {
+          // raises only, toward one flat top (start height + the plateau height); soft
+          // falloff makes the sides, so it reads as a mesa / table land
+          const top = Math.min(hi, s.plat), m = Math.min(1, wt * str * 0.6 * (wt > 0.35 ? 1.6 : 1));
+          if (H[i] < top) H[i] += (top - H[i]) * m;
+          break;
+        }
         case "noise": {
           const m = wt * str;
           if (m > s.mask[i]) { s.mask[i] = m; H[i] = clamp(s.base[i] + noiseA * m * GEN.fbm(c * nf, (mh - 1 - rr) * nf, 4242, 3, 0.5), lo, hi); }
@@ -1552,6 +2134,38 @@ function applyRamp(a, b, ha, hb) {
 // 0.1%), so the River water rule always runs downhill. A U-shaped channel inside half
 // the brush width, banks blending out over the falloff distance; it only ever lowers
 // the ground. The channel is painted River.
+// Range tool: the dragged path becomes a mountain range (same shapes as the World
+// generator): a ridged crest along the path, tapered ends, foothills, optional pass.
+// Brush size = width of the steep core.
+function applyRange(pts) {
+  const mw = S.w, mh = S.h, mpp = S.mpp;
+  // even spacing (about 6 px) and a little smoothing
+  let p = [pts[0]];
+  for (const q of pts) { const l = p[p.length - 1]; if (Math.hypot(q[0] - l[0], q[1] - l[1]) >= Math.max(3, 12 / mpp)) p.push(q.slice(0, 2)); }
+  const last = pts[pts.length - 1];
+  if (Math.hypot(last[0] - p[p.length - 1][0], last[1] - p[p.length - 1][1]) > 0.5) p.push(last.slice(0, 2));
+  if (p.length < 2 || Math.hypot(last[0] - pts[0][0], last[1] - pts[0][1]) * mpp < 20 && p.length < 4) return false;
+  for (let it = 0; it < 2; it++) p = p.map((q, k) => k === 0 || k === p.length - 1 ? q : [(p[k - 1][0] + 2 * q[0] + p[k + 1][0]) / 4, (p[k - 1][1] + 2 * q[1] + p[k + 1][1]) / 4]);
+  const peak = Math.max(1, brush.rangeH), seed = (Math.abs(GEN.hash(Math.round(p[0][0]), Math.round(p[0][1]), 31)) % 100000) + 5;
+  const passes = brush.rangePass ? [[0.5, 0.45]] : [];
+  const sp = { pts: p, seed, passes, minW: Math.max(0, brushSize() / 2 - 40) };
+  sp.prof = GEN.rangeProfile(sp, peak, passes, seed);
+  // the box the range can reach (foothills go out to 2.6 core widths)
+  const wmax = Math.max(sp.minW, peak / Math.tan(37 * Math.PI / 180)) + 40, R = Math.ceil(wmax * 2.7 / mpp);
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const q of p) { x0 = Math.min(x0, q[0]); y0 = Math.min(y0, q[1]); x1 = Math.max(x1, q[0]); y1 = Math.max(y1, q[1]); }
+  x0 = Math.max(0, Math.floor(x0 - R)); y0 = Math.max(0, Math.floor(y0 - R)); x1 = Math.min(mw - 1, Math.ceil(x1 + R)); y1 = Math.min(mh - 1, Math.ceil(y1 + R));
+  if (x0 > x1 || y0 > y1) return false;
+  const d = new Float32Array(mw * mh), M = new Float32Array(mw * mh);
+  GEN.stampRanges(d, mw, mh, mpp, [sp], { top: peak, coreSlope: 37, spur: Math.max(50, peak * 1.6), box: [x0, y0, x1, y1] }, M);
+  let any = false;
+  for (let r = y0; r <= y1; r++) for (let c = x0; c <= x1; c++) {
+    const i = r * mw + c;
+    if (d[i] > 0) { H[i] = clamp(H[i] + d[i], S.minH, S.maxH); any = true; }
+  }
+  if (any) markDirty(x0, y0, x1, y1);
+  return any;
+}
 function carveRiver(pts) {
   const mw = S.w, mh = S.h, mpp = S.mpp;
   const p = [pts[0]];
@@ -1657,6 +2271,7 @@ function autoOptsFromUI() {
     rock: num("autoRock", 36), snow: $("autoSnow").dataset.auto === "0" ? num("autoSnow", defaultSnow()) : defaultSnow(), beachH: num("autoBeachH", 2.5), beachD: num("autoBeachD", 14),
     swamp: clamp(num("autoSwamp", 0), 0, 100) / 100, forest: clamp(num("autoForest", 45), 0, 100) / 100, patch: Math.max(10, num("autoPatch", 160)),
     scope: $("autoScope").value, keepWater: $("autoKeepWater").checked,
+    mode: $("autoMode").value, wind: S.wind, moist: S.moist, region: S.region, lat: S.lat, beach: $("autoBeach").checked,
   };
 }
 // Default snow line: 80% of the way from the sea to the highest peak (so a map whose
@@ -1667,6 +2282,7 @@ function defaultSnow() {
   return Math.round(S.sea + Math.max(5, (top - S.sea) * 0.8));
 }
 function autoBiome(o) {
+  if (o.mode === "climate") return climateBiome(o);
   computeWater();
   const mw = S.w, mh = S.h, n = mw * mh, mpp = S.mpp, sea = S.sea, D = waterDistance();
   const inScope = o.scope === "selection" ? (i) => SEL[i] > 127 : o.scope === "unpainted" ? (i) => !P[i] : () => true;
@@ -1698,6 +2314,200 @@ function autoBiome(o) {
   return changed;
 }
 
+// Climate mode: biomes from temperature (height, optional north-south gradient) and
+// moisture (distance to water, wind and rain shadow, slow noise), looked up in a small
+// Whittaker-style table, then cleaned up into whole regions:
+//   1. everything is worked out on a coarse grid (cells of about 8 m),
+//   2. a majority filter about a third of the region size wide, twice,
+//   3. pieces smaller than about a quarter of a region join the biome around them,
+//   4. back to full size with a little noise on the borders so they aren't blocky,
+//   5. then the per-pixel rules: sea floor, rock on steep slopes (smoothed so it forms
+//      faces, not dots), snow line, beaches.
+function climateBiome(o) {
+  computeWater();
+  const mw = S.w, mh = S.h, n = mw * mh, mpp = S.mpp, sea = S.sea, D = waterDistance();
+  const inScope = o.scope === "selection" ? (i) => SEL[i] > 127 : o.scope === "unpainted" ? (i) => !P[i] : () => true;
+  const cs = Math.max(1, Math.round(8 / mpp)), cw = Math.ceil(mw / cs), ch = Math.ceil(mh / cs), cn = cw * ch, cm = cs * mpp;
+  // coarse height, land share, water distance
+  const hC = new Float32Array(cn), landC = new Float32Array(cn), dC = new Float32Array(cn), wetC = new Float32Array(cn);
+  for (let j = 0; j < ch; j++) for (let i = 0; i < cw; i++) {
+    let sh = 0, sl = 0, sd = 0, sw = 0, m = 0;
+    for (let y = j * cs; y < Math.min(mh, j * cs + cs); y++) for (let x = i * cs; x < Math.min(mw, i * cs + cs); x++) {
+      const k = y * mw + x; sh += H[k]; m++;
+      const wet = WS[k] !== NO_WATER && WS[k] > H[k];
+      if (wet) sw++; else if (H[k] >= sea) sl++;
+      sd += D[k];
+    }
+    const c = j * cw + i; hC[c] = sh / m; landC[c] = sl / m; dC[c] = sd / m * mpp; wetC[c] = sw / m;
+  }
+  let top = sea + 1;
+  for (let c = 0; c < cn; c++) if (hC[c] > top) top = hC[c];
+  const Rt = Math.max(5, top - sea);
+  // Wind: air starts wet over water, keeps some moisture over land and drops it when it
+  // climbs (wet windward slopes, dry lee side). Cells are visited in wind order and read
+  // their upwind neighbour (bilinear), so it is one pass.
+  const wa = (o.wind != null ? o.wind : 270) * Math.PI / 180;
+  const ux = -Math.sin(wa), uy = Math.cos(wa);             // direction the wind blows TO (x east, y north)
+  const order = new Int32Array(cn);
+  for (let c = 0; c < cn; c++) order[c] = c;
+  const proj = new Float32Array(cn);
+  for (let c = 0; c < cn; c++) { const i = c % cw, j = (c - i) / cw; proj[c] = i * ux - j * uy; }
+  order.sort((a, b) => proj[a] - proj[b]);
+  const hum = new Float32Array(cn), rain = new Float32Array(cn);
+  const sample = (A, x, y) => {
+    x = clamp(x, 0, cw - 1); y = clamp(y, 0, ch - 1);
+    const i = Math.min(cw - 2, x | 0), j = Math.min(ch - 2, y | 0), u = x - i, v = y - j, k = j * cw + i;
+    return (A[k] * (1 - u) + A[k + 1] * u) * (1 - v) + (A[k + cw] * (1 - u) + A[k + cw + 1] * u) * v;
+  };
+  const stepM = cm * 1.0, rech = 1 - Math.exp(-stepM / 300), dry = 1 - Math.exp(-stepM / 6000), lift = 1.6 / Rt;
+  for (const c of order) {
+    const i = c % cw, j = (c - i) / cw;
+    const px = i - ux, py = j + uy;
+    const out = px < 0 || py < 0 || px > cw - 1 || py > ch - 1;
+    const h0 = out ? Math.max(sea, hC[c]) : Math.max(sea, sample(hC, px, py)), up = out ? 1 : sample(hum, px, py);
+    const climb = Math.max(0, Math.max(sea, hC[c]) - h0);
+    let hh = up * (1 - dry);
+    const drop = Math.min(hh, hh * climb * lift);
+    hh -= drop;
+    const wet = wetC[c] + (1 - landC[c] - wetC[c]);      // water or sea floor
+    hh += (1 - hh) * rech * wet * 3;
+    hum[c] = clamp(hh, 0, 1); rain[c] = drop * 6;
+  }
+  // moisture and temperature
+  const mo = o.moist || 0, lat = o.lat || 0, R = Math.max(40, o.region || 300);
+  const M = new Float32Array(cn), T = new Float32Array(cn);
+  for (let c = 0; c < cn; c++) {
+    const i = c % cw, j = (c - i) / cw, x = i * cm, y = (ch - 1 - j) * cm;
+    const nz = GEN.fbm(x / (R * 2.2), y / (R * 2.2), 9101, 3, 0.5);
+    M[c] = 0.45 * hum[c] + 0.35 * Math.min(1, rain[c]) + 0.55 * Math.exp(-dC[c] / 220) + 0.3 * nz + 0.3 * mo;
+    const e = clamp((hC[c] - sea) / Rt, 0, 1), v = j / Math.max(1, ch - 1);   // v: 0 north .. 1 south
+    T[c] = 1 - 0.95 * e + 0.12 * GEN.fbm(x / (R * 3), y / (R * 3), 9102, 2, 0.5) - lat * 0.6 * (0.5 - v);
+  }
+  // moisture as a rank among land cells, so the table works on any map
+  const ms = [];
+  for (let c = 0; c < cn; c++) if (landC[c] > 0.5) ms.push(M[c]);
+  ms.sort((a, b) => a - b);
+  const rank = (v) => { if (!ms.length) return 0.5; let lo = 0, hi = ms.length; while (lo < hi) { const m = (lo + hi) >> 1; if (ms[m] < v) lo = m + 1; else hi = m; } return lo / ms.length; };
+  // Whittaker-style table: rows = temperature, columns = moisture rank (+ the wet/dry slider)
+  const CL = [B_DESERT, B_PLAINS, B_FOREST, B_SWAMP, B_SNOW];
+  const cls = new Uint8Array(cn);       // index into CL, 255 = not land
+  const sl = new Float32Array(cn);
+  for (let j = 0; j < ch; j++) for (let i = 0; i < cw; i++) {
+    const c = j * cw + i, hx = (hC[j * cw + Math.min(cw - 1, i + 1)] - hC[j * cw + Math.max(0, i - 1)]) / (2 * cm), hy = (hC[Math.min(ch - 1, j + 1) * cw + i] - hC[Math.max(0, j - 1) * cw + i]) / (2 * cm);
+    sl[c] = Math.atan(Math.hypot(hx, hy)) * 180 / Math.PI;
+  }
+  for (let c = 0; c < cn; c++) {
+    if (landC[c] <= 0.5) { cls[c] = 255; continue; }
+    const m = clamp(rank(M[c]) + 0.25 * mo, 0, 1), t = T[c], low = hC[c] - sea;
+    let k;
+    if (t < 0.2) k = 4;                                         // cold: snow
+    else if (m > 0.86 && low < 6 + Rt * 0.02 && sl[c] < 5 && dC[c] < 220) k = 3;   // wet, low, flat: swamp
+    else if (m > (t < 0.45 ? 0.45 : 0.52)) k = 2;              // forest (also in the cool hills)
+    else if (m < 0.2 && t > 0.55) k = 0;                       // dry and warm: desert
+    else k = 1;                                                 // plains
+    cls[c] = k;
+  }
+  // majority filter (summed-area table per class), twice
+  const rad = Math.max(1, Math.round(R / 3 / cm)), NK = 5, SA = new Float32Array((cw + 1) * (ch + 1));
+  const tmp = new Uint8Array(cn);
+  for (let pass = 0; pass < 2; pass++) {
+    const best = new Float32Array(cn).fill(-1);
+    tmp.set(cls);
+    for (let k = 0; k < NK; k++) {
+      SA.fill(0);
+      for (let j = 0; j < ch; j++) { let row = 0; for (let i = 0; i < cw; i++) { row += cls[j * cw + i] === k ? 1 : 0; SA[(j + 1) * (cw + 1) + i + 1] = SA[j * (cw + 1) + i + 1] + row; } }
+      for (let j = 0; j < ch; j++) for (let i = 0; i < cw; i++) {
+        const c = j * cw + i;
+        if (cls[c] === 255) continue;
+        const x0 = Math.max(0, i - rad), x1 = Math.min(cw, i + rad + 1), y0 = Math.max(0, j - rad), y1 = Math.min(ch, j + rad + 1);
+        let v = SA[y1 * (cw + 1) + x1] - SA[y0 * (cw + 1) + x1] - SA[y1 * (cw + 1) + x0] + SA[y0 * (cw + 1) + x0];
+        if (k === cls[c]) v += 0.5;                              // ties keep the current class
+        if (k === 4 && T[c] > 0.35) v = -1;                      // no snow down in the warm lowland
+        if (v > best[c]) { best[c] = v; tmp[c] = k; }
+      }
+    }
+    cls.set(tmp);
+  }
+  // small pieces join their surroundings
+  const minCells = Math.max(4, Math.round((R * R * 0.25) / (cm * cm)));
+  const lab = new Int32Array(cn).fill(-1), stack = new Int32Array(cn), comp = [];
+  for (let c0 = 0; c0 < cn; c0++) {
+    if (cls[c0] === 255 || lab[c0] >= 0) continue;
+    const k = cls[c0], id = comp.length, cells = [];
+    let sp = 0; stack[sp++] = c0; lab[c0] = id;
+    const nb = new Map();
+    while (sp) {
+      const c = stack[--sp]; cells.push(c);
+      const i = c % cw, j = (c - i) / cw;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const x = i + dx, y = j + dy; if (x < 0 || y < 0 || x >= cw || y >= ch) continue;
+        const m = y * cw + x;
+        if (cls[m] === k) { if (lab[m] < 0) { lab[m] = id; stack[sp++] = m; } }
+        else if (cls[m] !== 255) nb.set(cls[m], (nb.get(cls[m]) || 0) + 1);
+      }
+    }
+    comp.push({ k, cells, nb });
+  }
+  for (const cp of comp) {
+    if (cp.cells.length >= minCells || !cp.nb.size) continue;
+    let bk = -1, bv = -1;
+    for (const [k, v] of cp.nb) if (v > bv) { bv = v; bk = k; }
+    for (const c of cp.cells) cls[c] = bk;
+  }
+  // full size: nearest coarse cell, looked up through a little noise so borders wander
+  const rockThr = o.rock || S.steep || 35, snowH = o.snow;
+  // smoothed slope: average of the slope over a 5 x 5 box, so rock forms faces
+  const SL = new Float32Array(n);
+  for (let r = 0; r < mh; r++) for (let c = 0; c < mw; c++) SL[r * mw + c] = slopeDeg(c, r);
+  const SS = boxBlur(SL, mw, mh, 2);
+  let changed = 0;
+  for (let r = 0; r < mh; r++) for (let c = 0; c < mw; c++) {
+    const i = r * mw + c;
+    if (!inScope(i) || (o.keepWater && IS_WATER[B[i]])) continue;
+    const h = H[i], x = c * mpp, y = (mh - 1 - r) * mpp, dw = D[i] * mpp;
+    // borders wander: a slow warp about a quarter of a region, plus a fine one
+    const wq = R * 0.25 / cm;
+    const jx = GEN.fbm(x / 45, y / 45, 9103, 2, 0.5) * 1.6 + GEN.fbm(x / (R * 0.7), y / (R * 0.7), 9105, 3, 0.5) * wq;
+    const jy = GEN.fbm(x / 45, y / 45, 9104, 2, 0.5) * 1.6 + GEN.fbm(x / (R * 0.7), y / (R * 0.7), 9106, 3, 0.5) * wq;
+    const ci = clamp(Math.round(c / cs - 0.5 + jx), 0, cw - 1), cj = clamp(Math.round(r / cs - 0.5 + jy), 0, ch - 1);
+    let k = cls[cj * cw + ci];
+    if (k === 255) k = cls[Math.min(ch - 1, (r / cs) | 0) * cw + Math.min(cw - 1, (c / cs) | 0)];
+    let b = k === 255 ? B_PLAINS : CL[k];
+    const wetHere = WS[i] !== NO_WATER && WS[i] > h;
+    if (h < sea) b = B_DESERT;
+    else if (wetHere && !IS_WATER[b]) b = B_DESERT;           // lake / river beds
+    else if (Math.max(SS[i], SL[i] * 0.6) >= rockThr) b = B_ROCK;
+    else if (h >= snowH + 7 * GEN.noise(c * mpp / 45, r * mpp / 45, 77)) b = B_SNOW;
+    else if (b === B_SNOW && h < snowH - 25) b = B_ROCK;      // cold but below the snow line: bare rock
+    else if (o.beach !== false && h <= sea + o.beachH && dw <= o.beachD) b = B_DESERT;
+    if (B[i] !== b || P[i]) { B[i] = b; P[i] = 0; changed++; }
+  }
+  BE.set(B);
+  markAll(); waterDirty = true;
+  return changed;
+}
+// box blur (radius r) via running sums, rows then columns
+function boxBlur(src, w, h, r) {
+  const a = new Float32Array(src.length), out = new Float32Array(src.length);
+  for (let y = 0; y < h; y++) {
+    let s = 0, m = 0;
+    for (let x = -r; x <= r; x++) if (x >= 0 && x < w) { s += src[y * w + x]; m++; }
+    for (let x = 0; x < w; x++) {
+      a[y * w + x] = s / m;
+      const xa = x + r + 1, xr = x - r; if (xa < w) { s += src[y * w + xa]; m++; } if (xr >= 0) { s -= src[y * w + xr]; m--; }
+    }
+  }
+  for (let x = 0; x < w; x++) {
+    let s = 0, m = 0;
+    for (let y = -r; y <= r; y++) if (y >= 0 && y < h) { s += a[y * w + x]; m++; }
+    for (let y = 0; y < h; y++) {
+      out[y * w + x] = s / m;
+      const ya = y + r + 1, yr = y - r; if (ya < h) { s += a[ya * w + x]; m++; } if (yr >= 0) { s -= a[yr * w + x]; m--; }
+    }
+  }
+  return out;
+}
+
 //----- Generate (runs in a Web Worker) -----||
 let genWorkerURL = null, lastGen = null;
 // Runs genCore().generate in a worker (progress callbacks, the page stays responsive);
@@ -1707,7 +2517,7 @@ function runGenerator(p, onProgress) {
     let worker = null;
     try {
       if (!genWorkerURL) genWorkerURL = URL.createObjectURL(new Blob([`"use strict";const G=(${genCore.toString()})();
-onmessage=(e)=>{try{const r=G.generate(e.data,(f,what)=>postMessage({p:f,what}));postMessage({done:1,h:r.h,ms:r.ms},[r.h.buffer]);}
+onmessage=(e)=>{try{const r=G.generate(e.data,(f,what)=>postMessage({p:f,what}));postMessage({done:1,h:r.h,ms:r.ms,water:r.water||null,info:r.info||null},r.water?[r.h.buffer,r.water.buffer]:[r.h.buffer]);}
 catch(err){postMessage({error:String(err&&err.message||err)});}};`], { type: "text/javascript" }));
       worker = new Worker(genWorkerURL);
     } catch (e) { worker = null; }
@@ -1717,7 +2527,7 @@ catch(err){postMessage({error:String(err&&err.message||err)});}};`], { type: "te
     worker.onmessage = (e) => {
       const m = e.data; started = true;
       if (m.error) { worker.terminate(); reject(new Error(m.error)); }
-      else if (m.done) { worker.terminate(); resolve({ h: m.h, ms: m.ms, worker: true }); }
+      else if (m.done) { worker.terminate(); resolve({ h: m.h, ms: m.ms, water: m.water, info: m.info, worker: true }); }
       else if (onProgress) onProgress(m.p, m.what);
     };
     worker.onerror = (e) => { e.preventDefault(); worker.terminate(); if (!started) fallback(); else reject(new Error(e.message || "Generator failed")); };
@@ -1740,10 +2550,21 @@ async function generateMap(p, opt) {
     pushUndo();
     if (opt.selection) { for (let i = 0; i < H.length; i++) if (SEL[i]) H[i] += (r.h[i] - H[i]) * SEL[i] / 255; }
     else H.set(r.h);
+    // World generator: its rivers and lakes become River / Lake biome (hand-painted, so a
+    // later Auto biome keeps them); everything else that was water is cleared first.
+    if (r.water) {
+      const inSel = (i) => !opt.selection || SEL[i] > 127;
+      for (let i = 0; i < H.length; i++) {
+        if (!inSel(i)) continue;
+        if (r.water[i]) { B[i] = r.water[i] === 2 ? B_LAKE : B_RIVER; P[i] = 1; }
+        else if (IS_WATER[B[i]] && B[i] !== B_OCEAN) { B[i] = B_PLAINS; P[i] = 0; }
+      }
+      BE.set(B);
+    }
     markAll(); waterDirty = true;
     const ta = performance.now();
-    if (opt.auto) autoBiome({ ...autoOptsFromUI(), scope: opt.selection ? "selection" : "all", keepWater: !!opt.selection });
-    lastGen = { total: performance.now() - t0, noise: r.ms.noise, erosion: r.ms.erosion, auto: performance.now() - ta, worker: r.worker };
+    if (opt.auto) autoBiome({ ...autoOptsFromUI(), mode: r.water ? "climate" : $("autoMode").value, scope: opt.selection ? "selection" : "all", keepWater: r.water ? true : !!opt.selection });
+    lastGen = { total: performance.now() - t0, noise: r.ms.noise, erosion: r.ms.erosion, auto: opt.auto ? performance.now() - ta : 0, worker: r.worker, info: r.info || null };
     touched(false);
     return lastGen;
   } finally { busy(false); }
@@ -1789,6 +2610,7 @@ function renderRect(x0, y0, x1, y1) {
   const biomeView = S.view === "biome", op = S.opacity, wsOK = WS.length === mw * mh;
   const cs = contourStep(), ci = 1 / cs, cont = S.contours;
   const ex = 2 / (2 * mpp);     // relief exaggerated 2x so gentle slopes still read
+  const slv = S.slopeView, tLim = Math.tan(S.steep * Math.PI / 180), tWarn = Math.tan(S.steep * 0.75 * Math.PI / 180), sInv = 1 / (2 * mpp);
   for (let r = y0; r <= y1; r++) {
     const ru = r > 0 ? -mw : 0, rd = r < mh - 1 ? mw : 0;
     for (let c = x0; c <= x1; c++) {
@@ -1807,6 +2629,13 @@ function renderRect(x0, y0, x1, y1) {
       if (wsOK && WS[i] > h) {
         const d = WS[i] - h, wc = WATER_RGB[IS_WATER[BE[i]] ? BE[i] : B_OCEAN], m = biomeView ? clamp(0.55 + d * 0.04, 0.55, 0.9) * (0.4 + 0.6 * op) : 0.5;
         R = R * (1 - m) + wc[0] * m; G = G * (1 - m) + wc[1] * m; Bc = Bc * (1 - m) + wc[2] * m;
+      }
+      if (slv && !(wsOK && WS[i] > h)) {
+        // slope overlay: green walkable, yellow within 75%..100% of the limit, red over it
+        const sx = c > 0 && c < mw - 1 ? 1 : 2, sy = r > 0 && r < mh - 1 ? 1 : 2;
+        const tg = Math.hypot((hr - hl) * sx, (hd - hu) * sy) * sInv;
+        const k = tg >= tLim ? [235, 50, 40] : tg >= tWarn ? [245, 200, 40] : [60, 190, 80], m = 0.5;
+        R = R * (1 - m) + k[0] * m * shade; G = G * (1 - m) + k[1] * m * shade; Bc = Bc * (1 - m) + k[2] * m * shade;
       }
       if (cont) {
         const q = Math.floor((h - lo) * ci), qr = Math.floor((hr - lo) * ci), qd = Math.floor((hd - lo) * ci);
@@ -1876,7 +2705,7 @@ function drawMap() {
     const pts = stroke.tool === "ramp" ? [stroke.pts[0], stroke.end] : stroke.pts.concat([stroke.end]);
     const wpx = Math.max(2, brushRpx() * 2 * z);
     mctx.lineCap = "round"; mctx.lineJoin = "round";
-    for (const [col, lw] of [["#0008", wpx + 3], [stroke.tool === "river" ? "#46b4ffaa" : "#ffe28aaa", wpx]]) {
+    for (const [col, lw] of [["#0008", wpx + 3], [stroke.tool === "river" ? "#46b4ffaa" : stroke.tool === "range" ? "#d29a62cc" : "#ffe28aaa", wpx]]) {
       mctx.strokeStyle = col; mctx.lineWidth = lw; mctx.beginPath();
       pts.forEach((p, k) => { const [sx, sy] = S2(p); if (k) mctx.lineTo(sx, sy); else mctx.moveTo(sx, sy); });
       mctx.stroke();
@@ -2089,16 +2918,32 @@ uniform vec3 uPal[${BIOMES.length}];
 uniform vec4 uBrush;               // brush ring: world x, y, radius m, on (> 0)
 uniform vec3 uSun;
 uniform float uGrid;               // chunk size in meters for ground lines (0 = off)
+uniform float uRough;              // tan(walkable angle): rough rocky look above it (0 = off)
 ${FOG_GLSL}
 in vec3 vWorld;
 in vec2 vGrid;
 out vec4 fragColor;
+float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 void main() {
   ivec2 cell = clamp(ivec2(floor(vGrid)), ivec2(0), uSize - 2);
   uint b = texelFetch(uBiome, cell, 0).r;
   vec3 col = uPal[min(int(b), ${BIOMES.length - 1})];
   vec3 n = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
   if (n.z < 0.0) n = -n;
+  if (uRough > 0.0 && b > ${B_SWAMP}u) {
+    // Steep ground looks rough: rock colored, and every triangle gets its own tilt and
+    // brightness, so cliffs read as broken faces. Preview only (not exported).
+    float tg = sqrt(max(0.0, 1.0 - n.z * n.z)) / max(n.z, 1e-3);
+    float k = smoothstep(uRough * 0.8, uRough * 1.1, tg);
+    if (k > 0.0) {
+      vec2 f = fract(vGrid);
+      vec2 tri = vec2(floor(vGrid)) * 2.0 + vec2(f.x > f.y ? 1.0 : 0.0, 0.0);
+      vec3 j = vec3(hash2(tri), hash2(tri + 17.3), hash2(tri + 41.9)) - 0.5;
+      n = normalize(n + k * 0.55 * j);
+      vec3 rock = uPal[${B_ROCK}] * (0.82 + 0.36 * hash2(tri + 5.1));
+      col = mix(col, rock, k * (b == ${B_SNOW}u ? 0.45 : 0.85));
+    }
+  }
   float shade = 0.55 + 0.45 * max(0.0, dot(n, uSun));
   col *= shade;
   if (uGrid > 0.0) {
@@ -2120,7 +2965,7 @@ void main() {
   col = mix(col, uFogCol, edgeFog(vWorld));
   fragColor = vec4(col, 1.0);
 }`);
-  U = uniforms(prog, ["uHeight", "uBiome", "uSize", "uTile", "uTilesX", "uMpp", "uMaxH", "uMVP", "uPal", "uSun", "uGrid", "uBrush", "uFog", "uFogCol", "uEye"]);
+  U = uniforms(prog, ["uHeight", "uBiome", "uSize", "uTile", "uTilesX", "uMpp", "uMaxH", "uMVP", "uPal", "uSun", "uGrid", "uBrush", "uFog", "uFogCol", "uEye", "uRough"]);
   gl.useProgram(prog);
   gl.uniform1i(U.uHeight, 0); gl.uniform1i(U.uBiome, 1);
   gl.uniform3fv(U.uSun, SUN);
@@ -2467,6 +3312,11 @@ function waterAt(x, y) {
     if (IS_WATER[BE[i]] && WS[i] > H[i] && WS[i] > best) best = WS[i];
   return best;
 }
+// slope in degrees at a world point (from the ground on either side, 1 px apart)
+function slopeAtM(x, y) {
+  const d = S.mpp, gx = (groundAt(Math.min(worldW(), x + d), y) - groundAt(Math.max(0, x - d), y)) / (2 * d), gy = (groundAt(x, Math.min(worldH(), y + d)) - groundAt(x, Math.max(0, y - d))) / (2 * d);
+  return Math.atan(Math.hypot(gx, gy)) * 180 / Math.PI;
+}
 function fpFloor(x, y) {
   if ((waterDirty || WS.length !== H.length) && !stroke) computeWater();   // after edits (water lags while painting)
   const g = groundAt(x, y), w = waterAt(x, y), swimFeet = w - (S.eye - FP_SWIM_EYE);
@@ -2619,8 +3469,28 @@ function fpUpdate(now) {
   if (len > 1) { fwd /= len; side /= len; }
   const speed = S.walk * (sprint ? S.sprint : 1) * (fp.swim ? FP_SWIM_SPEED : 1);
   const cy = Math.cos(fp.yaw), sy = Math.sin(fp.yaw);
-  fp.x = clamp(fp.x + (cy * fwd + sy * side) * speed * dt, 0, worldW());
-  fp.y = clamp(fp.y + (sy * fwd - cy * side) * speed * dt, 0, worldH());
+  const mx = (cy * fwd + sy * side) * speed * dt, my = (sy * fwd - cy * side) * speed * dt;
+  if (mx || my) {
+    // Climb limit: walking up a slope steeper than the walkable angle is blocked (you
+    // slide along it instead); downhill is always fine, and so is swimming.
+    const ok = (nx, ny) => {
+      if (!S.fpClimb || fp.swim) return true;
+      const d = Math.hypot(nx - fp.x, ny - fp.y);
+      if (d < 1e-6) return true;
+      const g0 = groundAt(fp.x, fp.y), ux = (nx - fp.x) / d, uy = (ny - fp.y) / d, probe = Math.max(0.6, S.mpp * 0.5);
+      const g1 = groundAt(clamp(fp.x + ux * probe, 0, worldW()), clamp(fp.y + uy * probe, 0, worldH()));
+      if (fp.air) return groundAt(nx, ny) <= fp.z + 0.05 || (g1 - g0) / probe < Math.tan(S.steep * Math.PI / 180);
+      if (waterAt(nx, ny) - (S.eye - FP_SWIM_EYE) > groundAt(nx, ny)) return true;
+      return (g1 - g0) / probe < Math.tan(S.steep * Math.PI / 180);
+    };
+    const nx = clamp(fp.x + mx, 0, worldW()), ny = clamp(fp.y + my, 0, worldH());
+    let blocked = false;
+    if (ok(nx, ny)) { fp.x = nx; fp.y = ny; }
+    else if (Math.abs(mx) > 1e-6 && ok(nx, fp.y)) { fp.x = nx; blocked = true; }
+    else if (Math.abs(my) > 1e-6 && ok(fp.x, ny)) { fp.y = ny; blocked = true; }
+    else blocked = true;
+    fp.steep = blocked;
+  } else fp.steep = false;
   const f = fpFloor(fp.x, fp.y);
   fp.swim = f.swim;
   const jump = fpKeys.has("Space") || fpTouch.jump;
@@ -2649,7 +3519,8 @@ function updateFPHud(f, sprinting) {
   const t = `x ${fp.x.toFixed(1)}  y ${fp.y.toFixed(1)} m  px ${Math.round(col)},${Math.round(row)}  chunk ${Math.floor(c / S.chunk)},${Math.floor(r / S.chunk)}\n` +
     `ground ${f.g.toFixed(1)} m  eye ${(fp.z + S.eye).toFixed(1)} m  ${BIOMES[BE[r * S.w + c]].name}${wet}\n` +
     `edge ${edges[0][1].toFixed(0)} m (${edges[0][0]})  facing ${COMPASS[Math.round(hdg / 45) % 8]} ${hdg.toFixed(0)}°\n` +
-    `FOV ${S.fov}° v / ${hFovDeg(S.fov, aspect).toFixed(0)}° h  ${sprinting ? "sprint " + (S.walk * S.sprint).toFixed(1) : "walk " + S.walk} m/s`;
+    `FOV ${S.fov}° v / ${hFovDeg(S.fov, aspect).toFixed(0)}° h  ${sprinting ? "sprint " + (S.walk * S.sprint).toFixed(1) : "walk " + S.walk} m/s` +
+    `\nslope ${slopeAtM(fp.x, fp.y).toFixed(0)}°${fp.steep ? `  too steep to climb (over ${S.steep}°)` : ""}`;
   if (t !== fpHudKey) { fpHudKey = t; $("fpHud").textContent = t; }
   $("fpHint").textContent = fpLocked ? "WASD move · Shift sprint · Space jump · Esc exits" : "Click to look around (or drag) · WASD move · Shift sprint · Space jump · Esc exits";
 }
@@ -3567,7 +4438,7 @@ function refreshExport() {
 
 //----- UI Wiring -----||
 const TOOL_NAMES = { raise: "Raise", lower: "Lower", smooth: "Smooth", flatten: "Flatten", ramp: "Ramp", noise: "Roughen", terrace: "Terrace",
-  river: "River", paint: "Biome brush", fill: "Fill", pick: "Pick", select: "Select" };
+  river: "River", range: "Mountain range", plateau: "Plateau", paint: "Biome brush", fill: "Fill", pick: "Pick", select: "Select" };
 const BIOME_TOOLS = new Set(["paint", "fill", "pick"]);
 function setTool(t) {
   if (stroke) strokeCancel();
@@ -3613,7 +4484,7 @@ function syncBrushUI() {
   $("softLbl").classList.toggle("hide", !SOFT_TOOLS.has(tool));
   $("swatches").classList.toggle("hide", !BIOME_TOOLS.has(tool));
   if (has) { $("brushSize").value = sizeToSlider(m); $("brushSizeV").textContent = `${m} m${m / S.mpp < 1.5 ? "" : ` (${Math.round(m / S.mpp)} px)`}`; }
-  $("sizeLbl").firstChild.textContent = tool === "ramp" || tool === "river" ? "Width " : "Size ";
+  $("sizeLbl").firstChild.textContent = tool === "ramp" || tool === "river" || tool === "range" ? "Width " : "Size ";
   $("brushStr").value = brush.str; $("brushStrV").textContent = Math.round(brush.str * 100) + "%";
   $("brushSoft").value = brush.soft; $("brushSoftV").textContent = Math.round(brush.soft * 100) + "%";
 }
@@ -3634,6 +4505,10 @@ function syncToolOpts() {
   } else if (tool === "noise") h = optNum("Detail (m)", "noiseM", 2, 500, 1, "Size of the bumps");
   else if (tool === "terrace") h = optNum("Step (m)", "terrStep", 0.5, 200, 0.5, "Height of each shelf");
   else if (tool === "river") h = optNum("Depth (m)", "riverDepth", 0.2, 50, 0.1, "Channel depth below the ground");
+  else if (tool === "range") h = optNum("Peak (m)", "rangeH", 2, 2000, 1, "Highest point above the ground; ends taper") +
+    `<label title="A low saddle in the middle so you can walk across"><input type="checkbox" data-k="rangePass"${brush.rangePass ? " checked" : ""}> pass</label><span class="hint">Size = core width</span>`;
+  else if (tool === "plateau") h = optNum("Top (m above start)", "platH", 0.5, 500, 0.5, "The flat top is this much above where the stroke starts") +
+    `<label title="Use the typed Flatten height as the top instead"><input type="checkbox" data-k="flatFixed"${brush.flatFixed ? " checked" : ""}> fixed top = Flatten height</label>`;
   else if (tool === "select") h = `<button data-act="selClear" class="alt">Clear</button><button data-act="selAll" class="alt">All</button><button data-act="selInv" class="alt">Invert</button><span class="hint">Alt erases</span>`;
   else if (tool === "pick") h = `<span class="hint">Click to pick a biome</span>`;
   else if (tool === "fill") h = `<span class="hint">Fills the connected area of one biome</span>`;
@@ -3660,6 +4535,7 @@ function syncViewUI() {
   $("vBiome").classList.toggle("on", S.view === "biome");
   $("vOpacity").value = S.opacity; $("vOpacity").classList.toggle("hide", S.view !== "biome");
   $("vContours").classList.toggle("on", S.contours);
+  $("vSlope").classList.toggle("on", S.slopeView);
 }
 function setView(v, contours) {
   if (v) S.view = v;
@@ -3669,6 +4545,8 @@ function setView(v, contours) {
 $("vHeight").addEventListener("click", () => setView("height"));
 $("vBiome").addEventListener("click", () => setView("biome"));
 $("vContours").addEventListener("click", () => setView(null, !S.contours));
+function toggleSlopeView() { S.slopeView = !S.slopeView; syncViewUI(); markAll(); scheduleSave(); }
+$("vSlope").addEventListener("click", toggleSlopeView);
 $("vOpacity").addEventListener("input", (e) => { S.opacity = +e.target.value; markAll(); scheduleSave(); });
 
 // Tabs (phones): Map or 3D.
@@ -3740,6 +4618,7 @@ function syncSettingsUI() {
   $("setVBytes").value = S.vbytes; $("setWater").checked = S.water;
   $("setEye").value = S.eye; $("setFov").value = S.fov; $("setWalk").value = S.walk; $("setSprint").value = S.sprint;
   $("setNear").value = S.near; $("setFar").value = S.far; $("setFogW").value = S.fogW;
+  $("setSteep").value = S.steep; $("setFpClimb").checked = S.fpClimb; $("setRough3D").checked = S.rough3D;
   syncFogUI(); updateFovNote(); syncViewUI();
   updateStats();
 }
@@ -3797,12 +4676,40 @@ viewSetting("setEye", "eye", 0.2, 50); viewSetting("setFov", "fov", 10, 150);
 viewSetting("setWalk", "walk", 0.1, 200); viewSetting("setSprint", "sprint", 1, 20);
 viewSetting("setNear", "near", 0.01, 10); viewSetting("setFar", "far", 0, 100000);
 viewSetting("setFogW", "fogW", 5, 10000);
+$("setSteep").addEventListener("change", (e) => {
+  const v = parseFloat(e.target.value);
+  if (!Number.isFinite(v)) { e.target.value = S.steep; return; }
+  S.steep = clamp(v, 5, 80); e.target.value = S.steep;
+  glRedraw = true; viewDirty = true; if (S.slopeView) markAll(); scheduleSave();
+});
+$("setFpClimb").addEventListener("change", (e) => { S.fpClimb = e.target.checked; scheduleSave(); });
+$("setRough3D").addEventListener("change", (e) => { S.rough3D = e.target.checked; glRedraw = true; viewDirty = true; scheduleSave(); });
 $("setFog").addEventListener("change", (e) => { S.fog = e.target.checked; syncFogUI(); glKey = ""; scheduleSave(); });
 
 //----- Generate + Auto Biome UI -----||
+const GEN_PRESET_NAMES = {
+  world: [["island", "Island: sea all round, 2 ranges"], ["archipelago", "Archipelago: a main island and smaller ones"], ["continent", "Continent: coast on one side, 3 ranges"], ["highlands", "Highlands: all land, plateaus and high ranges"]],
+  classic: [["island", "Island: sea all round, mountains inland"], ["continent", "Continent / inland: mostly land, bays and lakes"], ["mountains", "Mountains & valleys: ranges, deep valleys"], ["hills", "Rolling hills: gentle, open land"]],
+};
+const GEN_W_SLIDERS = [["genRanges", "ranges", 0], ["genMountH", "mountH", 2], ["genRough", "rough", 2], ["genOutc", "outcrops", 2], ["genWErosion", "erosion", 2], ["genRivers", "rivers", 0], ["genLakes", "lakes", 0]];
+function genFillPresets() {
+  const t = $("genType").value, sel = $("genPreset"), keep = sel.value;
+  sel.innerHTML = "";
+  for (const [v, txt] of GEN_PRESET_NAMES[t]) { const o = document.createElement("option"); o.value = v; o.textContent = txt; sel.appendChild(o); }
+  if (GEN_PRESET_NAMES[t].some((q) => q[0] === keep)) sel.value = keep;
+  const world = t === "world";
+  $("genWorldBox").classList.toggle("hide", !world); $("genClassicBox").classList.toggle("hide", world);
+  $("genWorldNote").classList.toggle("hide", !world); $("genClassicNote").classList.toggle("hide", world);
+}
 function genPresetDefaults() {
-  const P = GEN.PRESETS[$("genPreset").value] || GEN.PRESETS.island;
-  $("genSize").value = 1; $("genMount").value = P.mount; $("genWarp").value = P.warp; $("genErosion").value = P.erosion; $("genEdge").value = "";
+  if ($("genType").value === "world") {
+    const P = GEN.WORLD_PRESETS[$("genPreset").value] || GEN.WORLD_PRESETS.island;
+    for (const [id, k] of GEN_W_SLIDERS) $(id).value = P[k];
+    $("genJitter").checked = true;
+  } else {
+    const P = GEN.PRESETS[$("genPreset").value] || GEN.PRESETS.island;
+    $("genSize").value = 1; $("genMount").value = P.mount; $("genWarp").value = P.warp; $("genErosion").value = P.erosion; $("genEdge").value = "";
+  }
   syncGenUI();
 }
 function syncGenUI() {
@@ -3810,21 +4717,34 @@ function syncGenUI() {
   $("genMountV").textContent = (+$("genMount").value).toFixed(2);
   $("genWarpV").textContent = (+$("genWarp").value).toFixed(2);
   $("genErosionV").textContent = (+$("genErosion").value).toFixed(2);
+  for (const [id, , d] of GEN_W_SLIDERS) $(id + "V").textContent = (+$(id).value).toFixed(d);
   const sel = selectionCount();
   $("genSel").disabled = !sel;
   if (!sel) $("genSel").checked = false;
-  $("genNote").textContent = (lastGen ? `Last run: ${(lastGen.total / 1000).toFixed(1)} s (shape ${(lastGen.noise / 1000).toFixed(1)} s, erosion ${(lastGen.erosion / 1000).toFixed(1)} s${lastGen.worker ? ", in the background" : ""}). ` : "") +
+  $("genNote").textContent = (lastGen ? `Last run: ${(lastGen.total / 1000).toFixed(1)} s (shape ${(lastGen.noise / 1000).toFixed(1)} s, erosion ${(lastGen.erosion / 1000).toFixed(1)} s${lastGen.auto ? `, biomes ${(lastGen.auto / 1000).toFixed(1)} s` : ""}${lastGen.worker ? ", in the background" : ""})${lastGen.info ? `: ${lastGen.info.ranges} ranges, ${lastGen.info.passes} passes, ${lastGen.info.rivers} rivers, ${lastGen.info.lakes} lakes` : ""}. ` : "") +
     (sel ? `Selection: ${fmtInt(sel)} px. "Only in selection" blends the new terrain into it (soft edges blend).` : "Paint a selection (M) to regenerate just part of the map.");
 }
-for (const id of ["genSize", "genMount", "genWarp", "genErosion"]) $(id).addEventListener("input", syncGenUI);
+for (const id of ["genSize", "genMount", "genWarp", "genErosion", ...GEN_W_SLIDERS.map((q) => q[0])]) $(id).addEventListener("input", syncGenUI);
+$("genType").addEventListener("change", () => { genFillPresets(); genPresetDefaults(); });
 $("genPreset").addEventListener("change", genPresetDefaults);
 $("genDefaults").addEventListener("click", genPresetDefaults);
-$("bGen").addEventListener("click", () => { if ($("genSeed").value === "") $("genSeed").value = 1; if ($("genMount").value === "" || !$("genMount").dataset.init) { $("genMount").dataset.init = 1; genPresetDefaults(); } syncGenUI(); openModal("genModal"); });
+$("bGen").addEventListener("click", () => {
+  if ($("genSeed").value === "") $("genSeed").value = 1;
+  if (!$("genPreset").options.length) genFillPresets();
+  if (!$("genMount").dataset.init) { $("genMount").dataset.init = 1; genPresetDefaults(); }
+  climateToUI("gen"); syncGenUI(); openModal("genModal");
+});
 $("gmClose").addEventListener("click", closeModals);
 $("genRand").addEventListener("click", () => { $("genSeed").value = Math.floor(Math.random() * 100000); });
 function genParamsFromUI() {
+  const seed = parseInt($("genSeed").value, 10) || 0;
+  if ($("genType").value === "world") {
+    const p = { gen: "world", seed, preset: $("genPreset").value, jitter: $("genJitter").checked };
+    for (const [id, k] of GEN_W_SLIDERS) p[k] = +$(id).value;
+    return p;
+  }
   return {
-    seed: parseInt($("genSeed").value, 10) || 0, preset: $("genPreset").value,
+    seed, preset: $("genPreset").value,
     size: +$("genSize").value, mount: +$("genMount").value, warp: +$("genWarp").value, erosion: +$("genErosion").value,
     edge: $("genEdge").value || undefined, terraces: Math.max(0, +$("genTerr").value || 0),
   };
@@ -3833,12 +4753,30 @@ $("genGo").addEventListener("click", async () => {
   const sel = $("genSel").checked;
   closeModals();
   try {
+    if ($("genType").value === "world") climateFromUI("gen");
     const r = await generateMap(genParamsFromUI(), { auto: $("genAuto").checked, selection: sel });
     toast(`Generated in ${(r.total / 1000).toFixed(1)} s (Undo to go back)`);
   } catch (e) { toast("Generate failed: " + (e.message || e)); }
 });
 
+// climate fields live in the settings (saved with the project; Generate uses them too)
+function climateFromUI(pre) {
+  const num = (id, d) => { const v = parseFloat($(id).value); return Number.isFinite(v) ? v : d; };
+  S.wind = ((num(pre + "Wind", 270) % 360) + 360) % 360; S.moist = clamp(num(pre + "Moist", 0), -1, 1);
+  S.region = clamp(num(pre + "Region", 300), 40, 3000);
+  if ($(pre + "Lat")) S.lat = clamp(num(pre + "Lat", 0), -1, 1);
+}
+function climateToUI(pre) {
+  $(pre + "Wind").value = S.wind; $(pre + "Moist").value = S.moist; $(pre + "Region").value = S.region;
+  if ($(pre + "Lat")) $(pre + "Lat").value = String(S.lat > 0 ? 1 : S.lat < 0 ? -1 : 0);
+}
+function syncAutoModeUI() {
+  const cl = $("autoMode").value === "climate";
+  $("autoClimate").classList.toggle("hide", !cl); $("autoClassic").classList.toggle("hide", cl);
+}
+$("autoMode").addEventListener("change", syncAutoModeUI);
 function syncAutoUI() {
+  climateToUI("auto"); syncAutoModeUI();
   const el = $("autoSnow");
   if (el.dataset.auto !== "0") el.value = defaultSnow();   // follows the peaks until you type one
   const opt = $("autoScope").querySelector('option[value="selection"]');
@@ -3850,6 +4788,7 @@ $("bAuto").addEventListener("click", () => { syncAutoUI(); openModal("autoModal"
 $("amClose").addEventListener("click", closeModals);
 $("autoGo").addEventListener("click", () => {
   pushUndo();
+  climateFromUI("auto");
   const t0 = performance.now(), n = autoBiome(autoOptsFromUI());
   touched(false); closeModals();
   toast(`Auto biome: ${fmtInt(n)} px changed in ${((performance.now() - t0) / 1000).toFixed(1)} s (Undo to go back)`);
@@ -3898,7 +4837,7 @@ $("bUndo").addEventListener("click", undo);
 $("bRedo").addEventListener("click", redo);
 $("bGrid").addEventListener("click", () => { showChunks = !showChunks; $("bGrid").classList.toggle("on", showChunks); viewDirty = true; glKey = ""; });
 
-const TOOL_KEYS = { r: "raise", l: "lower", s: "smooth", v: "flatten", p: "ramp", n: "noise", t: "terrace", c: "river", b: "paint", g: "fill", i: "pick", m: "select" };
+const TOOL_KEYS = { r: "raise", l: "lower", s: "smooth", v: "flatten", p: "ramp", n: "noise", t: "terrace", c: "river", a: "range", u: "plateau", b: "paint", g: "fill", i: "pick", m: "select" };
 window.addEventListener("keydown", (e) => {
   if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
   if ($("busy").classList.contains("show")) return;
@@ -3912,6 +4851,7 @@ window.addEventListener("keydown", (e) => {
   if (TOOL_KEYS[k]) setTool(TOOL_KEYS[k]);
   else if (k === "h") setView(S.view === "height" ? "biome" : "height");
   else if (k === "k") setView(null, !S.contours);
+  else if (k === "j") toggleSlopeView();
   else if (k === "e") setEdit3D(!edit3D);
   else if (k === "f") fitMap();
   else if (k === "=") mapActualSize();
@@ -4003,6 +4943,7 @@ function drawGL(timed) {
   gl.uniformMatrix4fv(U.uMVP, false, mvp);
   gl.uniform4fv(U.uFog, fog); gl.uniform3fv(U.uFogCol, FOG_COL); gl.uniform3fv(U.uEye, view.eye);
   gl.uniform1f(U.uGrid, fp.on && showChunks ? S.chunk * S.mpp : 0);
+  gl.uniform1f(U.uRough, S.rough3D ? Math.tan(S.steep * Math.PI / 180) : 0);
   gl.uniform2i(U.uSize, S.w, S.h);
   gl.uniform2i(U.uTile, tile.tx, tile.ty);
   gl.uniform1i(U.uTilesX, tile.nx);
@@ -4065,7 +5006,7 @@ function drawGL(timed) {
     allocMap(S.w, S.h);
     H.fill(S.sea - 5); B.fill(B_DESERT);
     $("genSeed").value = 7;
-    try { await generateMap({ seed: 7, preset: "island" }, { auto: true }); }
+    try { await generateMap({ gen: "world", seed: 7, preset: "island" }, { auto: true }); }
     catch (e) { toast("Could not generate the starting island: " + (e.message || e)); }
     undoStack.length = 0; redoStack.length = 0;
   }

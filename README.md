@@ -19,6 +19,7 @@ The 2D view shows either layer (**H** toggles):
 - **Height**: grey by height with hillshade (sun from the north-west).
 - **Biome**: the biome colors over the same relief, with an opacity slider.
 - **Contours** (**K**) draws a line every few meters (a round step for about 20 lines over the range), and every 5th line darker.
+- **Slope** (**J**) tints the ground by how steep it is: green is walkable, yellow is close to the limit (75 % of it), red is too steep. The limit is **Steep slope** in Map settings (default 35°).
 
 Hovering shows the height, biome, water depth, slope, pixel and world position.
 
@@ -39,9 +40,9 @@ New biomes will only be added at the end. The packed export format allows up to 
 
 ## Workflow
 
-1. **Generate** a base (or keep the island a new map starts with).
-2. **Sculpt** the big moves with a large brush: raise or lower whole areas, **Flatten** plateaus and build sites, **Ramp** roads between them, and carve **River** valleys to the sea. Finish with **Smooth**, **Roughen** or **Terrace**.
-3. **Auto biome** paints rock on steep slopes, snow up high, beaches, swamps and forest patches. Re-run it after sculpting.
+1. **Generate** a world (or keep the island a new map starts with).
+2. **Sculpt** the big moves with a large brush: add a mountain **Range**, raise a **Plateau**, raise or lower whole areas, **Flatten** build sites, **Ramp** roads between them, and carve **River** valleys to the sea. Finish with **Smooth**, **Roughen** or **Terrace**. Check walkability with the **Slope** view (**J**).
+3. **Auto biome** paints climate regions (forest, grassland, desert, swamp, snow) plus rock on steep slopes. Re-run it after sculpting.
 4. Touch up by hand with the **Biome** brush and **Fill**: lakes, ponds, a desert.
 5. Walk it with **Player** at your game's eye height and FOV.
 6. **Export**.
@@ -64,6 +65,8 @@ The tools work on the 2D map and on the 3D view. **Sculpt in 3D** (**E**) raycas
 | Roughen | N | Adds natural bumps. The detail size is in meters. |
 | Terrace | T | Turns slopes into flat shelves with steep steps. The step height is in meters. |
 | River | C | Drag a path. It carves a U-shaped channel that always runs downhill (high end to low end, at least a 0.1% grade), lowers the banks, and paints the bed River. Size is the channel width, and there is a depth setting. |
+| Range | A | Drag a path to raise a mountain range along it: a ridged crest with spurs, foothills on both sides and (optionally) a low walkable pass. Size is the width of the steep core; **Height** is the crest height above the ground (default 90 m). It uses the same shape as the generator, so it blends in. One undo step. |
+| Plateau | U | Raises the ground under the brush to a flat top (the height where the stroke starts + **Lift**, default 12 m, or a typed height with **fixed**). It never lowers ground, and the falloff makes the escarpment. |
 
 **Biome layer**
 
@@ -74,35 +77,54 @@ The tools work on the 2D map and on the 3D view. **Sculpt in 3D** (**E**) raycas
 | Pick | I | Takes the biome under the cursor. **Alt+click** with the brush or Fill does the same. |
 | Select | M | Paints a soft selection (Alt erases). **Generate** can blend into it, and **Auto biome** can be limited to it. |
 
-**Auto biome** sets each pixel from its height, slope and distance to water. The rules, in order:
-1. Below sea level: Desert. Under the automatic ocean this is the sea floor.
-2. Slope ≥ the rock angle (36°): Rock.
-3. Above the snow line: Snow. By default the snow line is 80% of the way from the sea to the highest peak, with a ragged edge.
-4. Near water and just above it: Desert (beach).
-5. Flat, low and near water: Swamp, in patches.
-6. Everything else: Forest patches (thinning with altitude) over Plains.
+**Auto biome** has two modes.
 
-You can change each threshold and the forest and swamp amounts. The scope is the whole map, the selection, or only pixels you haven't painted by hand. Hand-painted water can be kept.
+**Climate** (the default) paints biomes as large regions, the way climate does:
+1. **Temperature** falls with height (and, if you set a latitude direction, toward one map edge).
+2. **Moisture** comes from the wind: air picks up water over the sea and lakes and drops it as it climbs mountains, so the windward side is wet and the lee side is in a **rain shadow**. Being near water and some large-scale noise add to it.
+3. A Whittaker-style table turns temperature and moisture into Snow (cold), Swamp (very wet, flat, low and by water), Forest (wet), Desert (hot and dry) or Plains (grassland).
+4. **Region cleanup**: a majority filter at the **region size** (default 300 m) and merging of small patches, then wandering borders. So you get whole forests, grasslands and deserts, not speckles.
+5. Then terrain: Rock on slopes ≥ the rock angle, Snow above the snow line, beaches (optional), and Desert for the sea floor and dry beds.
+
+Settings: **wind direction** (where it blows from, default 270° = west), **moisture** (−1 dry … +1 wet), **region size**, **latitude** (none / colder north / colder south), **beaches**, plus the rock angle and snow line. The generator dialog has the same climate settings.
+
+**Classic** is the old rule list, per pixel: below sea level Desert, slope ≥ the rock angle (36°) Rock, above the snow line Snow, near water a Desert beach, flat low wet ground Swamp patches, otherwise Forest patches over Plains.
+
+In both modes the scope is the whole map, the selection, or only pixels you haven't painted by hand (so hand-painted biomes are kept). Hand-painted water can be kept.
 
 ## Generator
 
-**Generate** takes a **seed** and one of four presets. It always makes the same map from the same seed and settings, on any device.
+**Generate** takes a **seed** and a preset. It always makes the same map from the same seed and settings, on any device.
+
+![World presets: Island 7, Archipelago 11, Continent 5, Highlands 3](screenshot_worlds.png)
+
+### World generator (default)
+
+New maps use the **World** generator. It builds the land in layers, the way real land is shaped, instead of one noise field:
+
+1. **Land shape and regions.** A coastline, then broad regions at three levels (lowland, plateau, highland) with soft escarpments between them.
+2. **Mountain ranges.** 1–4 ranges along curved ridgelines, with a ridged crest, spurs, foothills on both sides and low **passes** you can walk over. Mountains only appear in the ranges, so most of the land is open.
+3. **Detail by zone.** Rolling hills on open land, a few terraced rock **outcrops and small cliffs**, and sharp ridges only in the mountain cores.
+4. **Erosion.** Water erosion cuts valleys (stronger in the mountains, gentle on the lowlands), then slope erosion settles anything steeper than the rock angle.
+5. **Rivers and lakes.** Rivers start in the hills and flow downhill to the sea (or off the map edge), filling lakes in the basins on the way. They are painted River and Lake.
+6. **Walkable by design.** Open land is kept under the steep-slope limit; only range cores, outcrops and cliffs are steep. In tests about 88–93 % of the land is walkable at 35°.
 
 | Preset | Look |
 |---|---|
-| Island | Sea all round, mountain ranges inland (the default map is Island, seed 7) |
-| Continent | Mostly land, with bays and inland lakes |
-| Mountains & valleys | Ridged ranges with deep valleys |
-| Rolling hills | Gentle, open land |
+| Island | Sea all round, 2 ranges (the default map is Island, seed 7) |
+| Archipelago | A main island with a range, and several smaller islands |
+| Continent | Coast on one side, 3 ranges, inland lakes |
+| Highlands | All land: plateaus and high ranges with snow |
 
-How it builds a map:
-1. Domain-warped fBm noise makes the big landforms.
-2. Ridged noise, masked to mountain areas, makes the ranges.
-3. Hydraulic erosion cuts gullies and settles the slopes.
+Sliders: **Mountain ranges** (count), **Mountain height**, **Roughness** (hills), **Rock outcrops / small cliffs**, **Erosion**, **Rivers**, **Lakes**, **Rough facets on cliffs**, plus the climate settings for Auto biome.
 
-**Feature size**, **Mountains**, **Warp**, **Erosion**, **Edges** (island falloff or none) and optional **Terraces** can be tuned. It runs in a Web Worker with a progress bar, so the page stays responsive. It takes about 2 s at 1025 × 1025 on a desktop.
+It runs in a Web Worker with a progress bar. At 1025 × 1025 it takes about 3–6 s (Archipelago 2.8 s, Island 4.2 s, Continent 5.3 s, Highlands 5.8 s, of which climate biomes are about 0.5 s) in a headless test browser; a desktop is usually faster.
 
-**Only in selection** blends the new terrain into the selected area. **Auto biome after** paints the result. Undo brings the old map back.
+### Classic generator
+
+The old presets (Island, Continent, Mountains & valleys, Rolling hills) are kept under **Generator → Classic**: domain-warped fBm noise, masked ridged noise and hydraulic erosion, with **Feature size**, **Mountains**, **Warp**, **Erosion**, **Edges** and optional **Terraces**. It takes about 2 s.
+
+**Only in selection** blends the new terrain into the selected area (both generators). **Auto biome after** paints the result. Undo brings the old map back.
 
 ## Water
 
@@ -170,6 +192,7 @@ Notes:
   - Resizing keeps the map by scaling it or by cropping or padding it 1:1. Undo restores the old size.
 - **Min / Max height**: the range the export spreads its height steps over. Keep it tight for finer steps.
 - **Sea level**, **Auto ocean**, chunk size, vertex size, water preview.
+- **Slopes**: **Steep slope** (default 35°) is the walkable limit used by the Slope view and first person. **First person can't climb steep slopes** (on by default). **Rough look on steep slopes** (on by default) shades steep ground in the 3D preview as broken rock (see below).
 - First person and edge fog settings (below).
 
 **The 3D preview is full resolution**: one vertex per pixel, the exact grid you export, with no reduced detail. **The 2D map is pixel-exact**. **F** fits it, and **=** zooms to one screen pixel per map pixel.
@@ -179,6 +202,7 @@ Notes:
 | Keys | Action |
 |---|---|
 | R L S V P N T C | Raise, Lower, Smooth, Flatten, Ramp, Roughen, Terrace, River |
+| A U | Range, Plateau |
 | B G I M | Biome brush, Fill, Pick, Select |
 | `1`-`9`, `0` | Pick a biome (`1` = Ocean ... `9` = Rock, `0` = Forest) |
 | `[` `]` | Brush size |
@@ -186,6 +210,7 @@ Notes:
 | Alt + click | Flatten: sample the height. Biome tools: pick. Select: erase. (On touch, long press.) |
 | H | Height or biome view |
 | K | Contours |
+| J | Slope view |
 | E | Sculpt in 3D |
 | F, `=` | Fit the map, 1:1 zoom |
 | Ctrl+Z, Ctrl+Y (Ctrl+Shift+Z) | Undo, redo |
@@ -216,6 +241,7 @@ While you walk:
   - Your feet follow the exact exported mesh, using the same two triangles per cell.
   - The map edge is a wall.
   - Walking off a ledge drops you with gravity.
+- **Steep slopes:** with **First person can't climb steep slopes** on, you can't walk up ground steeper than the Steep slope limit (35°); you slide along it instead, and the readout says "too steep". Walking down is fine, and jumping doesn't get you over it. The readout always shows the slope under you.
 - **Water:**
   - You wade until the water is deeper than eye height − 0.3 m.
   - Past that, you swim with your eyes 0.3 m above the surface, at half speed.
@@ -239,6 +265,14 @@ The **Edge fog** button in the 3D view (also in **Map settings**, off by default
 - Beyond the edge, and below the horizon, there is a haze backdrop instead of empty sky.
 - It works in the orbit view and in first person.
 - It is preview only. It is not exported.
+
+## Rough look on steep slopes
+
+![Slope view (left) and the rough look in 3D (right)](screenshot_slope.png)
+
+Two separate things make cliffs read as rock:
+- **Preview shading** (Map settings → **Rough look on steep slopes**, on by default). In the 3D view, land steeper than about the Steep slope limit is tinted rock color and each triangle's lighting is jittered, so it looks like broken, faceted stone. It is **preview only and is not exported**. For rock in the game, use the Rock biome: Auto biome paints it on slopes over the rock angle.
+- **Height facets** (generator → **Rough facets on cliffs**, on by default). The World generator adds a small random height jitter (about 1–2 m at 2 m/px) on faces steeper than about 30°. This is real height, so it is exported.
 
 ## Export
 
