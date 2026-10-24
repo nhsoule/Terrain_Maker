@@ -73,6 +73,10 @@
   /* ----- Busy Overlay (generator progress) -----|| */
   #busy { display: none; position: fixed; inset: 0; z-index: 30; background: #000a; align-items: center; justify-content: center; }
   #busy.show { display: flex; }
+  #dropHint { display: none; position: fixed; inset: 12px; z-index: 40; border: 3px dashed #e0b43a; border-radius: 16px; background: #000b;
+              align-items: center; justify-content: center; text-align: center; font-size: 20px; color: #fff; pointer-events: none; }
+  #dropHint small { font-size: 13px; color: #b9bccb; }
+  #dropHint.show { display: flex; }
   #busy .card { max-width: 360px; text-align: center; }
   #busyBar { height: 8px; background: #0d0e12; border-radius: 4px; overflow: hidden; }
   #busyBar div { height: 100%; width: 0; background: #e0b43a; transition: width .1s; }
@@ -407,11 +411,26 @@
     <div class="note"><b>Height PNG</b>: 16-bit greyscale, black = Min height, white = Max height (Gaea, World Machine, Krita, Photoshop read and write it). Importing scales it to the map size and keeps the biomes. <b>Biome PNG</b>: each pixel in its biome's key color (the swatch colors); paint it anywhere with a hard brush, then import it back (nearest color wins). Importing keeps the heights.</div>
     <div class="btnrow"><button id="fExpH" class="alt">Save height PNG</button><button id="fImpH" class="alt">Import height PNG</button></div>
     <div class="btnrow"><button id="fExpB" class="alt">Save biome PNG</button><button id="fImpB" class="alt">Import biome PNG</button></div>
+    <div class="sub">Game exports</div>
+    <div class="note">Open an exported <b>.h</b> or <b>.bin</b> (any of the 3 formats, from this or an older version) to keep editing it: size, m/px, height range, sea level, chunk size and biomes come back. Water is recomputed from the biomes. A .bin does not store the Min height, so you are asked for it. You can also drop a file anywhere on the page.</div>
+    <div class="btnrow"><button id="fImpGame" class="alt">Import .h / .bin</button></div>
     <div class="note">Open also reads maps from older Terrain Maker versions (the one-image map PNG where hue = biome and brightness = height, and .json projects). They are split into the two layers.</div>
     <div class="btnrow"><button id="fNew" class="alt">New flat map</button></div>
     <input id="fileIn" type="file" class="hide">
   </div>
 </div>
+
+<!-- ----- Import .bin -----|| -->
+<div id="binModal" class="modal">
+  <div class="card">
+    <div class="head"><span>Import .bin</span><button id="biCancel" class="alt">Cancel</button></div>
+    <div class="note" id="biInfo"></div>
+    <div class="note">A .bin stores heights above the bottom of its range, not the <b>Min height</b> itself. Leave 0 unless you exported with a Min height below 0 (the .h has it as <code>height_offset</code>).</div>
+    <label><span>Min height (m)</span><input id="biMinH" type="number" step="any" value="0" inputmode="decimal"></label>
+    <div class="btnrow"><button id="biGo">Import</button></div>
+  </div>
+</div>
+<div id="dropHint"><div>Drop a map to open it<br><small>.tmproj, .h, .bin, height / biome PNG, old map</small></div></div>
 
 <!-- ----- Export -----|| -->
 <div id="exportModal" class="modal">
@@ -484,6 +503,7 @@
     <h3>Files and export</h3>
     <ul>
       <li><b>File</b>: project (.tmproj), 16-bit height PNG and biome PNG in and out, and older one-image maps (converted to two layers).</li>
+      <li><b>Import .h / .bin</b> (or drop it on the page): reopens a game export of any format or version for editing. Water is recomputed; a <code>.bin</code> asks for the Min height.</li>
       <li><b>Export</b>: a C header or a <code>.bin</code> with the full grid, biome ids, water surface and chunk info. Formats: uint16 height + uint8 biome, uint8 + uint8, or packed uint16 (<code>h = v &gt;&gt; 4</code>, <code>b = v &amp; 15</code>).</li>
       <li>Coordinates: Z up, north (+Y) at the top of the map. Pixel (col, row) is world x = col × m/px, y = (H − 1 − row) × m/px.</li>
     </ul>
@@ -2939,6 +2959,8 @@ async function openLegacyPNG(file, bytes, meta) {
 }
 async function openAny(file) {
   const bytes = new Uint8Array(await file.arrayBuffer());
+  if (isTmapBin(bytes) || looksLikeHeader(file, bytes)) { await importGameFile(file, bytes); return; }
+  if (/\.bin$/i.test(file.name)) throw new Error("Not a Terrain Maker .bin (it should start with TMAP)");
   if (isProject(bytes)) {
     pushUndo();
     const snap = undoStack[undoStack.length - 1];
@@ -2977,8 +2999,337 @@ $("fileIn").addEventListener("change", async (e) => {
     else if (fileAction === "height") importHeightImage(await readImage(file, bytes), metaOf(bytes));
     else if (fileAction === "biome") importBiomeImage(await readImage(file, bytes));
     closeModals();
-  } catch (err) { toast(err.message || String(err)); }
+  } catch (err) { toast("Could not open " + (file.name || "the file") + ": " + (err.message || String(err)), 8000); }
 });
+
+//----- Import Game Exports (.h / .bin) -----||
+// Reads Terrain Maker's own exports back in, so you can keep editing a map you only have
+// as a game file. Both give heights as integer steps (0..maxQ) over a height range and
+// biome ids in the file's own biome list:
+//   .bin  "TMAP" version 1 (no biome table, data at 64) or 2 (biome table + water grid).
+//   .h    any Terrain Maker header: constants, enum TerrainBiome, and the data arrays
+//         <name>_height + <name>_biome, or <name>_packed. Parsed in a worker (a 2000 x 2000
+//         header is 30-47 MB of text).
+// The water grid is not authoring data: water is recomputed from the biomes and sea level,
+// and compared with the file's grid as a check.
+function importCore() {
+  "use strict";
+  // Tiny arithmetic evaluator for constant initialisers like "120.0f / 65535.0f".
+  function evalExpr(s) {
+    const t = String(s).replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+    let i = 0;
+    const ws = () => { while (i < t.length && /\s/.test(t[i])) i++; };
+    function num() {
+      ws();
+      const m = /^(0[xX][0-9a-fA-F]+|(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)[fFuUlL]*/.exec(t.slice(i, i + 64));
+      if (!m) throw new Error("bad number in \"" + s.trim().slice(0, 40) + "\"");
+      i += m[0].length;
+      return /^0[xX]/.test(m[1]) ? parseInt(m[1], 16) : parseFloat(m[1]);
+    }
+    function atom() {
+      ws();
+      if (t[i] === "(") {
+        // C cast like (float) or a parenthesised expression
+        const cast = /^\(\s*(?:float|double|int|unsigned|uint\d+_t|int\d+_t)\s*\)/.exec(t.slice(i, i + 32));
+        if (cast) { i += cast[0].length; return atom(); }
+        i++; const v = sum(); ws(); if (t[i] !== ")") throw new Error("missing )"); i++; return v;
+      }
+      if (t[i] === "-") { i++; return -atom(); }
+      if (t[i] === "+") { i++; return atom(); }
+      return num();
+    }
+    function prod() { let v = atom(); for (;;) { ws(); if (t[i] === "*") { i++; v *= atom(); } else if (t[i] === "/") { i++; v /= atom(); } else return v; } }
+    function sum() { let v = prod(); for (;;) { ws(); if (t[i] === "+") { i++; v += prod(); } else if (t[i] === "-") { i++; v -= prod(); } else return v; } }
+    const v = sum(); ws();
+    if (i < t.length) throw new Error("unexpected \"" + t.slice(i, i + 20) + "\"");
+    return v;
+  }
+
+  // Numbers of a C array initialiser starting right after "{": decimal or hex, comments
+  // skipped. Fills out (length n) and returns the index just past "}".
+  function readArray(text, at, out, maxV, what, progress, base, total) {
+    const n = out.length, L = text.length;
+    let k = 0, i = at, nextP = at + 4000000;
+    for (;;) {
+      if (i >= L) throw new Error(what + ": the file ends inside the array (cut off?)");
+      let c = text.charCodeAt(i);
+      if (c <= 32 || c === 44) { i++; continue; }               // whitespace, comma
+      if (c === 125) { i++; break; }                             // }
+      if (c === 47) {                                            // comment
+        const d = text.charCodeAt(i + 1);
+        if (d === 47) { const e = text.indexOf("\n", i); i = e < 0 ? L : e + 1; continue; }
+        if (d === 42) { const e = text.indexOf("*/", i + 2); if (e < 0) throw new Error(what + ": unclosed comment"); i = e + 2; continue; }
+      }
+      if (c < 48 || c > 57) throw new Error(what + ": unexpected \"" + text.slice(i, i + 12).replace(/\s+/g, " ") + "\" after " + k + " values");
+      let v = 0;
+      if (c === 48 && (text.charCodeAt(i + 1) | 32) === 120) {  // 0x..
+        i += 2;
+        for (;;) { c = text.charCodeAt(i); const h = c >= 48 && c <= 57 ? c - 48 : (c | 32) >= 97 && (c | 32) <= 102 ? (c | 32) - 87 : -1; if (h < 0) break; v = v * 16 + h; i++; }
+      } else {
+        while (c >= 48 && c <= 57) { v = v * 10 + c - 48; c = text.charCodeAt(++i); }
+      }
+      while (i < L && /[uUlL]/.test(text[i])) i++;
+      if (v > maxV) throw new Error(what + ": value " + v + " is out of range");
+      if (k >= n) throw new Error(what + ": more than " + n + " values");
+      out[k++] = v;
+      if (progress && i > nextP) { nextP = i + 4000000; progress((base + i - at) / total); }
+    }
+    if (k !== n) throw new Error(what + ": " + k + " values, expected " + n);
+    return i;
+  }
+
+  function parseH(bytes, progress) {
+    const text = new TextDecoder("utf-8").decode(bytes);
+    const declRe = /(?:static\s+)?(?:const\s+)?(uint8_t|uint16_t|unsigned\s+char|unsigned\s+short|uint32_t)\s+(\w+)\s*\[([^\]\[]*)\]\s*=\s*\{/g;
+    const arrays = {}; let firstData = -1, m, prefix = null;
+    const want = /^(\w+?)_(height|biome|packed|water)$/;
+    // Pass 1: find the data arrays (positions only).
+    const decls = [];
+    while ((m = declRe.exec(text))) {
+      const w = want.exec(m[2]);
+      if (!w) continue;
+      decls.push({ type: m[1], name: m[2], prefix: w[1], kind: w[2], dims: m[3], at: declRe.lastIndex });
+      if (firstData < 0) firstData = m.index;
+      // skip over the array body quickly to keep the regex off the numbers
+      const e = text.indexOf("}", declRe.lastIndex);
+      if (e < 0) throw new Error(m[2] + " has no closing brace: the file is cut off");
+      declRe.lastIndex = e;
+    }
+    if (!decls.length) throw new Error("No terrain data arrays (<name>_height / _biome or _packed) in this header");
+    prefix = (decls.find((d) => d.kind === "height" || d.kind === "packed") || decls[0]).prefix;
+    const head = text.slice(0, firstData);
+    // Constants
+    const K = {}, kRe = /static\s+const\s+(?:unsigned\s+)?(?:int|float|double|long|uint\d+_t|int\d+_t)\s+(\w+)\s*=\s*([^;]+);/g;
+    while ((m = kRe.exec(head))) { try { K[m[1]] = evalExpr(m[2]); } catch (e) { /* not a number constant */ } }
+    const kOf = (s) => K[prefix + "_" + s];
+    const w = kOf("w") | 0, h = kOf("h") | 0;
+    if (!(w > 0 && h > 0)) throw new Error("Missing " + prefix + "_w / " + prefix + "_h in the header");
+    const n = w * h;
+    // Biome list: enum names in id order (and the name strings if present)
+    const names = [];
+    const en = /enum\s+TerrainBiome[^{]*\{([\s\S]*?)\}/.exec(head);
+    if (en) { const eRe = /BIOME_(\w+)\s*=\s*(\d+)/g; while ((m = eRe.exec(en[1]))) if (m[1] !== "COUNT") names[+m[2]] = m[1]; }
+    const sn = /terrain_biome_name\s*\[[^\]]*\]\s*=\s*\{([\s\S]*?)\}/.exec(head);
+    const strNames = sn ? [...sn[1].matchAll(/"([^"]*)"/g)].map((x) => x[1]) : null;
+    const nb = names.length || (strNames ? strNames.length : 0);
+    // Data
+    const total = Math.max(1, text.length - firstData);
+    const get = (kind) => decls.find((d) => d.prefix === prefix && d.kind === kind);
+    const dims = (d) => { let v; try { v = evalExpr(d.dims); } catch (e) { v = NaN; } if (v !== n) throw new Error(d.name + " is [" + d.dims + "], expected " + w + " * " + h); };
+    const is16 = (d) => /uint16_t|short/.test(d.type);
+    let q, b, maxQ, fmt, water = null;
+    const pk = get("packed"), hd = get("height"), bd = get("biome"), wd = get("water");
+    if (pk) {
+      dims(pk); const raw = new Uint16Array(n);
+      readArray(text, pk.at, raw, 65535, pk.name, progress, pk.at - firstData, total);
+      q = new Uint16Array(n); b = new Uint8Array(n);
+      for (let i = 0; i < n; i++) { q[i] = raw[i] >> 4; b[i] = raw[i] & 15; }
+      maxQ = 4095; fmt = "packed";
+    } else {
+      if (!hd || !bd) throw new Error("The header needs " + prefix + "_height and " + prefix + "_biome (or " + prefix + "_packed)");
+      dims(hd); dims(bd);
+      maxQ = is16(hd) ? 65535 : 255; fmt = maxQ > 255 ? "16" : "8";
+      q = new Uint16Array(n); b = new Uint8Array(n);
+      readArray(text, hd.at, q, maxQ, hd.name, progress, hd.at - firstData, total);
+      readArray(text, bd.at, b, 255, bd.name, progress, bd.at - firstData, total);
+    }
+    if (wd) { dims(wd); water = new Uint16Array(n); readArray(text, wd.at, water, 65535, wd.name, progress, wd.at - firstData, total); }
+    let range = kOf("max_height");
+    if (!(range > 0) && kOf("height_scale") > 0) range = kOf("height_scale") * maxQ;
+    if (!(range > 0)) throw new Error("Missing " + prefix + "_max_height");
+    return {
+      kind: "h", name: prefix, w, h, fmt, maxQ, q, b, water,
+      mpp: kOf("meters_per_px"), range, offset: Number.isFinite(kOf("height_offset")) ? kOf("height_offset") : null,
+      sea: kOf("sea_level"), chunk: kOf("chunk_cells") | 0,
+      names: names.length ? names : strNames, nb,
+      version: names.includes("FALL") ? "11 biomes (Fall)" : names.includes("WATER") ? "7 biomes" : (Number.isFinite(kOf("height_offset")) ? "current" : "10 biomes, no height_offset"),
+    };
+  }
+
+  function parseBin(u8) {
+    if (u8.length < 64 || u8[0] !== 84 || u8[1] !== 77 || u8[2] !== 65 || u8[3] !== 80) throw new Error("Not a Terrain Maker .bin (no \"TMAP\" at the start)");
+    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), U = (o) => dv.getUint32(o, true), F = (o) => dv.getFloat32(o, true);
+    const ver = U(4), w = U(8), h = U(12), C = U(16), fmtId = U(28), n = w * h;
+    if (ver !== 1 && ver !== 2) throw new Error("Unknown .bin version " + ver + " (this app reads 1 and 2)");
+    if (!(w >= 2 && h >= 2 && w <= 65536 && h <= 65536)) throw new Error("Bad map size in the .bin: " + w + " x " + h);
+    if (fmtId > 2) throw new Error("Unknown .bin data format " + fmtId);
+    const fmt = ["16", "8", "packed"][fmtId], maxQ = [65535, 255, 4095][fmtId], bytesPer = fmtId === 0 ? 3 : 2;
+    const nb = U(48);
+    let dataAt = 64, waterAt = 0, flags = 0, names = null;
+    if (ver === 2) {
+      flags = U(52); dataAt = U(56); waterAt = U(60);
+      if (nb > 64 || dataAt < 64 + 32 * nb) throw new Error("Damaged .bin header (biome table)");
+      names = [];
+      for (let k = 0; k < nb; k++) {
+        const o = 64 + 32 * k; let s = "";
+        for (let j = 12; j < 32 && u8[o + j]; j++) s += String.fromCharCode(u8[o + j]);
+        names[u8[o]] = s;
+      }
+    }
+    if (u8.length < dataAt + n * bytesPer) throw new Error(".bin is too short for " + w + " x " + h + " (cut off?)");
+    const q = new Uint16Array(n), b = new Uint8Array(n);
+    if (fmtId === 0) { for (let i = 0; i < n; i++) q[i] = dv.getUint16(dataAt + i * 2, true); b.set(u8.subarray(dataAt + n * 2, dataAt + n * 3)); }
+    else if (fmtId === 1) { q.set(u8.subarray(dataAt, dataAt + n)); b.set(u8.subarray(dataAt + n, dataAt + n * 2)); }
+    else for (let i = 0; i < n; i++) { const v = dv.getUint16(dataAt + i * 2, true); q[i] = v >> 4; b[i] = v & 15; }
+    let water = null;
+    if (ver === 2 && (flags & 1) && waterAt) {
+      const wB = fmtId === 1 ? 1 : 2;
+      if (u8.length < waterAt + n * wB) throw new Error(".bin water grid is cut off");
+      water = new Uint16Array(n);
+      if (wB === 1) water.set(u8.subarray(waterAt, waterAt + n)); else for (let i = 0; i < n; i++) water[i] = dv.getUint16(waterAt + i * 2, true);
+    }
+    // float32 fields back to the short decimal they were written from (200, not 200.0000031)
+    const dec = (f) => { for (let p = 1; p <= 9; p++) { const v = parseFloat(f.toPrecision(p)); if (Math.fround(v) === f) return v; } return f; };
+    const range = dec(F(36) > 0 ? F(36) : F(40) * maxQ);
+    return { kind: "bin", binVersion: ver, w, h, fmt, maxQ, q, b, water, mpp: dec(F(32)), range, offset: null, sea: dec(F(44)), chunk: C, names, nb, version: "v" + ver + (names ? "" : ", " + nb + " biomes") };
+  }
+  return { parseH, parseBin, evalExpr };
+}
+const IMP = importCore();
+
+// Old biome names (enum BIOME_<NAME> / table names) -> current ids.
+const BIOME_BY_NAME = { OCEAN: B_OCEAN, WATER: B_OCEAN, LAKE: B_LAKE, RIVER: B_RIVER, POND: B_POND, SWAMP: B_SWAMP, DESERT: B_DESERT, SAND: B_DESERT,
+  DIRT: B_DESERT, SNOW: B_SNOW, PLAINS: B_PLAINS, GRASS: B_PLAINS, GRASSY_PLAINS: B_PLAINS, ROCK: B_ROCK, FOREST: B_FOREST, FALL: B_FOREST };
+// File biome id -> current id: by name when the file lists names, else by the biome count.
+function biomeRemap(r) {
+  const map = new Uint8Array(256).fill(255), notes = [];
+  if (r.names && r.names.length) {
+    r.names.forEach((nm, k) => {
+      if (nm === undefined) return;
+      const key = String(nm).toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_|_$/g, "");
+      if (key in BIOME_BY_NAME) map[k] = BIOME_BY_NAME[key];
+      else notes.push(`unknown biome "${nm}" (id ${k}) became Plains`);
+    });
+  } else {
+    const pal = r.nb === 7 ? OLD_PALETTES[2].map : r.nb === 11 ? OLD_PALETTES[3].map : null;
+    for (let k = 0; k < 16; k++) map[k] = pal ? (k < pal.length ? pal[k] : 255) : k < BIOMES.length ? k : 255;
+  }
+  const changed = r.names ? r.names.some((nm, k) => nm !== undefined && map[k] !== k) : r.nb !== BIOMES.length;
+  return { map, notes, changed };
+}
+
+let impWorkerURL = null;
+function parseHeaderAsync(bytes, onProgress) {
+  return new Promise((resolve, reject) => {
+    let worker = null;
+    try {
+      if (!impWorkerURL) impWorkerURL = URL.createObjectURL(new Blob([`"use strict";const I=(${importCore.toString()})();
+onmessage=(e)=>{try{const r=I.parseH(new Uint8Array(e.data),(f)=>postMessage({p:f}));const t=[r.q.buffer,r.b.buffer];if(r.water)t.push(r.water.buffer);postMessage({done:1,r},t);}
+catch(err){postMessage({error:String(err&&err.message||err)});}};`], { type: "text/javascript" }));
+      worker = new Worker(impWorkerURL);
+    } catch (e) { worker = null; }
+    const fallback = () => setTimeout(() => { try { resolve(IMP.parseH(bytes, null)); } catch (e) { reject(e); } }, 30);
+    if (!worker) { fallback(); return; }
+    let started = false;
+    worker.onmessage = (e) => {
+      const m = e.data; started = true;
+      if (m.error) { worker.terminate(); reject(new Error(m.error)); }
+      else if (m.done) { worker.terminate(); resolve(m.r); }
+      else if (onProgress) onProgress(m.p);
+    };
+    worker.onerror = (e) => { e.preventDefault(); worker.terminate(); if (!started) fallback(); else reject(new Error(e.message || "Could not read the header")); };
+    const copy = bytes.slice();             // the worker takes this copy; ours stays usable for the fallback
+    worker.postMessage(copy.buffer, [copy.buffer]);
+  });
+}
+
+function looksLikeHeader(file, bytes) {
+  if (/\.(h|hpp|hh|inc)$/i.test(file.name)) return true;
+  const s = new TextDecoder().decode(bytes.subarray(0, 512));
+  return /^\s*(#pragma|#include|\/\/|\/\*|#ifndef)/.test(s) && /terrain|TerrainBiome|_height|_packed/i.test(new TextDecoder().decode(bytes.subarray(0, 8192)));
+}
+const isTmapBin = (u8) => u8.length >= 64 && u8[0] === 84 && u8[1] === 77 && u8[2] === 65 && u8[3] === 80;
+
+// A .bin has no height_offset: ask for the Min height (default 0) before importing.
+let binResolve = null;
+function askBinMinH(r, fileName) {
+  return new Promise((resolve) => {
+    $("biInfo").textContent = `${fileName}: ${r.w} × ${r.h} px, ${fmtM(r.mpp)}/px, ${EXPORT_FORMATS[r.fmt].label}, ` +
+      `height range ${fmtM(r.range)}, sea ${fmtM(r.sea)} above the bottom, chunk ${r.chunk}, ${r.names ? r.names.length + " biomes (named)" : r.nb + " biomes"}` +
+      (r.water ? ", water grid" : "") + `.`;
+    $("biMinH").value = 0;
+    openModal("binModal");
+    binResolve = resolve;
+    const done = (v) => { $("biGo").onclick = $("biCancel").onclick = null; binResolve = null; closeModals(); resolve(v); };
+    $("biGo").onclick = () => { const v = +$("biMinH").value; done(Number.isFinite(v) ? v : 0); };
+    $("biCancel").onclick = () => done(null);
+  });
+}
+
+async function importGameFile(file, bytes) {
+  let r;
+  if (isTmapBin(bytes)) {
+    r = IMP.parseBin(bytes);
+    const minH = await askBinMinH(r, file.name);
+    if (minH === null) return;
+    r.offset = minH;
+    r.name = file.name.replace(/\.[^.]*$/, "");
+  } else {
+    busy(true, "Reading header…", 0);
+    const t0 = performance.now();
+    try { r = await parseHeaderAsync(bytes, (f) => busy(true, `Reading header… ${Math.round(f * 100)}%`, f)); }
+    finally { busy(false); }
+    r.ms = performance.now() - t0;
+  }
+  applyImported(r, file.name);
+  return r;
+}
+
+let lastImport = null;
+function applyImported(r, fileName) {
+  if (r.w < SIZE_MIN || r.h < SIZE_MIN || r.w > SIZE_MAX || r.h > SIZE_MAX) throw new Error(`Map size ${r.w} × ${r.h} is outside ${SIZE_MIN}..${SIZE_MAX} px`);
+  const { map, notes, changed } = biomeRemap(r);
+  pushUndo();
+  const snap = undoStack[undoStack.length - 1];
+  try {
+    const minH = r.offset || 0, range = r.range, k = range / r.maxQ;
+    applySettings({
+      name: r.name || S.name, mpp: r.mpp > 0 ? r.mpp : S.mpp, minH, maxH: minH + range,
+      sea: Number.isFinite(r.sea) ? minH + r.sea : S.sea, chunk: r.chunk > 0 ? r.chunk : S.chunk,
+      autoOcean: S.autoOcean, view: S.view, opacity: S.opacity, contours: S.contours,
+      eye: S.eye, fov: S.fov, walk: S.walk, sprint: S.sprint, near: S.near, far: S.far, fog: S.fog, fogW: S.fogW, vbytes: S.vbytes,
+    });
+    S.minH = minH; S.maxH = minH + range;
+    allocMap(r.w, r.h);
+    let bad = 0;
+    for (let i = 0; i < H.length; i++) {
+      H[i] = minH + r.q[i] * k;
+      let v = map[r.b[i]];
+      if (v === 255) { v = B_PLAINS; bad++; }
+      B[i] = v; P[i] = IS_WATER[v] && v !== B_OCEAN ? 1 : 0;
+    }
+    BE.set(B);
+    // Water check: recompute and compare with the file's grid (same steps).
+    computeWater();
+    let wInfo = null;
+    if (r.water) {
+      const wq = waterGrid(r.maxQ);
+      let wetF = 0, wetN = 0, diff = 0;
+      for (let i = 0; i < wq.length; i++) {
+        const a = r.water[i], c = wq[i];
+        if (a) wetF++; if (c) wetN++;
+        if ((a > 0) !== (c > 0) || Math.abs(a - c) > 1) diff++;
+      }
+      wInfo = { wetFile: wetF, wetNow: wetN, differ: diff, frac: diff / Math.max(1, wetF) };
+    }
+    if (!$("setChunk").querySelector(`option[value="${S.chunk}"]`) && ![...$("setChunk").options].some((o) => +o.value === S.chunk)) {
+      const o = document.createElement("option"); o.textContent = String(S.chunk); $("setChunk").appendChild(o);
+    }
+    syncSettingsUI(); touched(true);
+    lastImport = { file: fileName, kind: r.kind, version: r.version, fmt: r.fmt, w: r.w, h: r.h, ms: r.ms, unknownIds: bad, remapped: changed, water: wInfo };
+    const msg = [`Imported ${fileName}: ${r.w}×${r.h}, ${EXPORT_FORMATS[r.fmt].label}`];
+    if (r.fmt === "8") msg.push(`8-bit heights are ${fmtM(k)} steps: smooth before sculpting fine detail`);
+    if (changed) msg.push(`Older biome list (${r.names ? r.names.length : r.nb}) converted to the current biomes`);
+    if (bad) msg.push(`${fmtInt(bad)} px had unknown biome ids (now Plains)`);
+    if (notes.length) msg.push(notes.join("; "));
+    if (wInfo && wInfo.frac > 0.02) msg.push(`water recomputed from the biomes differs from the file at ${fmtInt(wInfo.differ)} px (${(wInfo.frac * 100).toFixed(1)}%)`);
+    msg.push("Undo to go back");
+    toast(msg.join(". ") + ".", 7000);
+  } catch (err) {
+    undoStack.pop(); restore(snap); updateUndoButtons();
+    throw err;
+  }
+}
 
 //----- Export (C header) -----||
 // Turn any text into a valid C identifier: letters/digits/underscore only, no leading digit.
@@ -3194,10 +3545,10 @@ async function copyText(text) {
 }
 
 let toastTimer = 0;
-function toast(msg) {
+function toast(msg, ms) {
   const t = $("toast");
   t.textContent = msg; t.classList.add("show");
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), ms || Math.max(2600, msg.length * 45));
 }
 
 let exportCache = "", lastExportMs = 0;
@@ -3330,7 +3681,10 @@ function showTab(t) {
 document.querySelectorAll("#tabs button").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
 
 // Modals
-function closeModals() { document.querySelectorAll(".modal").forEach((m) => m.classList.remove("show")); }
+function closeModals() {
+  if (binResolve && $("binModal").classList.contains("show")) { const r = binResolve; binResolve = null; r(null); }   // closed = cancelled
+  document.querySelectorAll(".modal").forEach((m) => m.classList.remove("show"));
+}
 function openModal(id) { closeModals(); $(id).classList.add("show"); }
 
 $("b3DEdit").addEventListener("click", () => setEdit3D(!edit3D));
@@ -3504,7 +3858,22 @@ $("autoGo").addEventListener("click", () => {
 $("bFile").addEventListener("click", () => openModal("fileModal"));
 $("fmClose").addEventListener("click", closeModals);
 $("fSaveProj").addEventListener("click", () => saveProject().catch((e) => toast(e.message || String(e))));
-$("fOpen").addEventListener("click", () => pickFile(".tmproj,.png,image/png,image/*,.json,application/json", "open"));
+const OPEN_ACCEPT = ".tmproj,.png,image/png,image/*,.json,application/json,.h,.hpp,text/x-c,text/x-chdr,.bin,application/octet-stream";
+$("fOpen").addEventListener("click", () => pickFile(OPEN_ACCEPT, "open"));
+$("fImpGame").addEventListener("click", () => pickFile(".h,.hpp,text/x-c,text/x-chdr,.bin,application/octet-stream", "open"));
+// Drag and drop a file anywhere on the page: same as Open.
+let dragDepth = 0;
+const hasFiles = (e) => e.dataTransfer && [...(e.dataTransfer.types || [])].includes("Files");
+window.addEventListener("dragenter", (e) => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth++; $("dropHint").classList.add("show"); });
+window.addEventListener("dragover", (e) => { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; });
+window.addEventListener("dragleave", (e) => { if (!hasFiles(e)) return; if (--dragDepth <= 0) { dragDepth = 0; $("dropHint").classList.remove("show"); } });
+window.addEventListener("drop", async (e) => {
+  if (!hasFiles(e)) return;
+  e.preventDefault(); dragDepth = 0; $("dropHint").classList.remove("show");
+  const file = e.dataTransfer.files[0]; if (!file) return;
+  if (stroke) strokeCancel();
+  try { await openAny(file); closeModals(); } catch (err) { toast("Could not open " + file.name + ": " + (err.message || String(err)), 8000); }
+});
 $("fExpH").addEventListener("click", () => saveHeightPNG().catch((e) => toast(e.message || String(e))));
 $("fImpH").addEventListener("click", () => pickFile("image/png,image/*", "height"));
 $("fExpB").addEventListener("click", () => saveBiomePNG().catch((e) => toast(e.message || String(e))));
