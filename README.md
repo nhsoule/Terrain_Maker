@@ -127,9 +127,36 @@ A sample is under water where `surface > bed`, and `depth = surface - bed`. The 
 - **Save height PNG**: a 16-bit greyscale PNG, black = Min height, white = Max height. The range is stored in the PNG, so it opens at the same heights (within 1/65535 of the range).
 - **Save biome PNG**: an RGB PNG, one key color per biome (the swatch underline colors).
 - **Import height PNG / Import biome PNG** replace one layer and keep the other. Images of another size are scaled: bilinear for height, nearest pixel for biomes. Any 8- or 16-bit grey or color PNG works for height, using its luminance.
+- **Import .h / .bin** opens a game export to keep editing it (see [Importing game exports](#importing-game-exports-h--bin)). **Open** also accepts these files.
 - **New flat map** starts a flat map.
 
 Work autosaves in the browser (IndexedDB, so 4096 × 4096 maps fit).
+
+### Importing game exports (`.h` / `.bin`)
+
+Use **File → Import .h / .bin** or **Open**, or drop the file anywhere on the page. Both are read in all three formats (uint16 + uint8, uint8 + uint8, packed uint16).
+
+What comes back:
+- Size, m/px, height range, sea level and chunk cells.
+- The heights, in meters: `z = v × range / maxQ + Min height`.
+- The biomes. They are matched by name from the file's `enum TerrainBiome` / name table where possible, otherwise by id. Ids the app does not know become Plains (the toast says how many).
+
+Notes:
+- **`.bin`**: version 2, and version 1 (no biome table or water). The `.bin` does not store the Min height, so a small dialog asks for it. It defaults to 0; use your old Min height if it was below 0.
+- **`.h`**: the current header and older ones:
+  - with no `height_offset` (heights start at 0 m)
+  - with 11 biomes (Fall becomes Forest)
+  - with 7 biomes (Water → Ocean, Sand / Dirt → Desert, Grass → Plains, as for older maps)
+
+  Values may be decimal or hex, and comments are skipped. Big headers (a 2000 × 2000 uint16 header is about 45 MB) are read in a background worker with a progress bar. In tests that took about 0.4–1 s of parsing, and 5–9 s with page work included.
+- **Water is recomputed** from the biomes and heights, not read from the file. If the result differs from the file's water grid by more than 2 % of the wet samples, the toast says so.
+- **8-bit files** only have 256 height steps. The toast shows the step size; smooth before sculpting fine detail.
+- The import is a single undo step. A broken file (cut off, wrong magic or version, values out of range, missing arrays) shows an error, and the map stays as it was.
+
+**Round trip.** Export → import → export gives the same height and biome data byte for byte, in every format, for both `.h` and `.bin`. The 2000 × 2000 (uneven chunks) `.h` and `.bin` files are fully identical. The exceptions are:
+- **Water grid.** The first re-export of a map that was not imported can differ by a few samples (117 of 740k in the test), because water is rebuilt from the quantized heights. After that it stays the same.
+- **Auto Ocean.** In older files, land biomes that sit below sea level and touch the ocean become Ocean, the same way as when editing.
+- **Map name.** A `.h` keeps its `<name>` prefix. A `.bin` is named after the file.
 
 **Older maps** (one color image, where hue = biome and brightness = height) are split into the two layers when you open them, including old autosaves. Heights keep their values (Min height becomes 0). Biomes are decoded with the palette the map was saved with:
 - Version 3 Fall becomes Forest.
