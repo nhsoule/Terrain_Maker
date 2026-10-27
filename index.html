@@ -1324,14 +1324,22 @@ function genCore() {
       }
       if (best < 0 || bestRel > Rt * 0.12) continue;
       const c0 = pts[best][0], r0 = pts[best][1];
-      // the level: the lowest ground on the rim (the lake spills there, into the river)
+      // The lake's outline (a wobbly circle), then its level: the lowest ground just
+      // outside the outline, which is where the water spills. This must include the
+      // river channel that already runs through here, or the outlet would drain the lake
+      // below its bed and leave a dry, raised bowl.
+      const B0 = Math.floor(r0 - Rl * 1.8), B1 = Math.ceil(r0 + Rl * 1.8), A0 = Math.floor(c0 - Rl * 1.8), A1 = Math.ceil(c0 + Rl * 1.8);
+      const dAt = (c, r) => { const ang = Math.atan2(r - r0, c - c0), Rk = Rl * (1 + 0.28 * fbm(Math.cos(ang) * 1.3 + q, Math.sin(ang) * 1.3, seed + 501, 2, 0.5)); return Math.hypot(c - c0, r - r0) / Rk; };
       let rim = Infinity;
-      for (let a = 0; a < 32; a++) { const z = h[Math.round(r0 + Math.sin(a / 32 * 6.283) * Rl) * w + Math.round(c0 + Math.cos(a / 32 * 6.283) * Rl)]; if (z < rim) rim = z; }
+      for (let r = B0; r <= B1; r++) for (let c = A0; c <= A1; c++) {
+        if (c < 1 || r < 1 || c >= w - 1 || r >= hgt - 1 || dAt(c, r) < 1) continue;
+        if (dAt(c - 1, r) < 1 || dAt(c + 1, r) < 1 || dAt(c, r - 1) < 1 || dAt(c, r + 1) < 1) rim = Math.min(rim, h[r * w + c]);
+      }
+      if (!(rim > sea + 0.5)) continue;
       const level = rim - 0.3, depth = 2.5 + Rl * mpp * 0.035;
-      for (let r = Math.floor(r0 - Rl * 1.5); r <= Math.ceil(r0 + Rl * 1.5); r++) for (let c = Math.floor(c0 - Rl * 1.5); c <= Math.ceil(c0 + Rl * 1.5); c++) {
+      for (let r = B0; r <= B1; r++) for (let c = A0; c <= A1; c++) {
         if (c < 0 || r < 0 || c >= w || r >= hgt) continue;
-        const ang = Math.atan2(r - r0, c - c0), Rk = Rl * (1 + 0.28 * fbm(Math.cos(ang) * 1.3 + q, Math.sin(ang) * 1.3, seed + 501, 2, 0.5));
-        const d = Math.hypot(c - c0, r - r0) / Rk, i = r * w + c;
+        const d = dAt(c, r), i = r * w + c;
         if (d < 1) { h[i] = Math.min(h[i], level - depth * (1 - d * d) - 0.4); water[i] = 2; }
         else if (d < 1.35) { const z = level + (h[i] - level) * sstep(1, 1.35, d); if (z < h[i] && water[i] !== 1) h[i] = Math.max(z, level + 0.2); }
       }
@@ -1402,6 +1410,27 @@ function genCore() {
       let z = h[i];
       if (z > knee) z = knee + room * (1 - Math.exp(-(z - knee) / room));
       h[i] = clamp(z, p.minH, p.maxH);
+    }
+    // Every lake must hold water: find each lake's spill level the same way the editor
+    // does (the lowest ground touching it) and keep its whole bed below that, in case a
+    // later step (slope relaxing, facets) notched the rim.
+    if (lakes) {
+      const seen = new Uint8Array(n), list = [];
+      for (let s0 = 0; s0 < n; s0++) {
+        if (seen[s0] || water[s0] !== 2) continue;
+        list.length = 0; list.push(s0); seen[s0] = 1;
+        let spill = Infinity;
+        for (let k = 0; k < list.length; k++) {
+          const i = list[k], c = i % w;
+          const nb = [c > 0 ? i - 1 : -1, c < w - 1 ? i + 1 : -1, i >= w ? i - w : -1, i < n - w ? i + w : -1];
+          for (const j of nb) {
+            if (j < 0) continue;
+            if (water[j] === 2) { if (!seen[j]) { seen[j] = 1; list.push(j); } }
+            else spill = Math.min(spill, h[j]);
+          }
+        }
+        if (spill < Infinity) for (const i of list) h[i] = Math.min(h[i], spill - 0.4);
+      }
     }
     prog(1, "done");
     return { h, water, ms: { noise: tShape, erosion: tErode }, info: { ranges: spines.length, passes: spines.reduce((a, s) => a + s.passes.length, 0), rivers: rivers.length, lakes } };
