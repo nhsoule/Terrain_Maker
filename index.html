@@ -377,6 +377,18 @@
       <label><span>Rivers</span><input id="genRivers" type="range" min="0" max="12" step="1"><b id="genRiversV" class="v"></b></label>
       <label><span>Lakes</span><input id="genLakes" type="range" min="0" max="8" step="1"><b id="genLakesV" class="v"></b></label>
       <label><span>Rough facets on cliffs</span><input id="genJitter" type="checkbox" checked></label>
+      <div class="sub">Traversable world</div>
+      <label><span>Mountain style</span><select id="genMStyle"><option value="ridge">Ridges: sharp crests, spurs</option><option value="massif">Massifs: flat tops, cliff walls + ramps</option></select></label>
+      <label><span>Tiers (stepped land)</span><input id="genTiers" type="range" min="0" max="1" step="0.05"><b id="genTiersV" class="v"></b></label>
+      <label><span>Tier height (m)</span><input id="genTierH" type="range" min="2" max="8" step="0.5"><b id="genTierHV" class="v"></b></label>
+      <label><span>Cliffs</span><input id="genCliffs" type="range" min="0" max="1" step="0.05"><b id="genCliffsV" class="v"></b></label>
+      <label><span>Max open-land slope (°, 0 = off)</span><input id="genTSlope" type="range" min="0" max="35" step="1"><b id="genTSlopeV" class="v"></b></label>
+      <label><span>Small features (minor ridges, tier clusters, valleys)</span><input id="genMinor" type="range" min="0" max="30" step="1"><b id="genMinorV" class="v"></b></label>
+      <label><span>Winding (rivers + ridges)</span><input id="genWindy" type="range" min="0" max="1" step="0.05"><b id="genWindyV" class="v"></b></label>
+      <label><span>River sources from high ground (0 = off)</span><input id="genSourceH" type="range" min="0" max="0.9" step="0.05"><b id="genSourceHV" class="v"></b></label>
+      <label><span>Waterfalls</span><input id="genFalls" type="range" min="0" max="12" step="1"><b id="genFallsV" class="v"></b></label>
+      <label><span>Landmarks</span><input id="genMarks" type="range" min="0" max="12" step="1"><b id="genMarksV" class="v"></b></label>
+      <label><span>Wide flat meadow</span><input id="genMeadow" type="checkbox"></label>
       <div class="sub">Climate (for Auto biome)</div>
       <label><span>Wind from (°, 270 = west)</span><input id="genWind" type="number" min="0" max="360" step="15" value="270" inputmode="decimal"></label>
       <label><span>Moisture (-1 dry .. 1 wet)</span><input id="genMoist" type="number" min="-1" max="1" step="0.1" value="0" inputmode="decimal"></label>
@@ -498,7 +510,8 @@
     </ul>
     <h3>Workflow</h3>
     <ol>
-      <li><b>Generate</b>: the <b>World</b> generator builds the land in layers like the real thing: coastline and broad lowland / plateau / highland regions, 1-4 mountain ranges along curved ridgelines with foothills and low passes, rolling hills, a few terraced rock outcrops and small cliffs, valleys cut by flowing water, then rivers and lakes. Open land stays walkable. Presets: Island, Archipelago, Continent, Highlands; sliders for ranges, mountain height, roughness, outcrops, erosion, rivers, lakes and the climate. The older noise presets are under <b>Classic</b>. It takes a few seconds in the background.</li>
+      <li><b>Generate</b>: the <b>World</b> generator builds the land in layers like the real thing: coastline and broad lowland / plateau / highland regions, 1-4 mountain ranges along curved ridgelines with foothills and low passes, rolling hills, a few terraced rock outcrops and small cliffs, valleys cut by flowing water, then rivers and lakes. Open land stays walkable. Presets: <b>Traversable</b> (the default), Island, Archipelago, Continent, Highlands; sliders for ranges, mountain height, roughness, outcrops, erosion, rivers, lakes and the climate.</li>
+      <li><b>Traversable world</b> (the Traversable preset, or the sliders under that heading on any preset): <b>Massif</b> mountains with flat tops, cliff walls on some sides and long ramps or passes on others (<b>Cliffs</b> sets how much of the edge is wall); <b>Tiers</b>: the land steps in shelves of <b>Tier height</b> m, with planned cliff bands; <b>Max open-land slope</b> relaxes everything except the planned cliffs down to that angle (15° = easy walking); <b>Small features</b>: minor ridges, small tier clusters and narrow valleys between the big ones; <b>Winding</b>: longer, curvier rivers and ridges; one wide flat <b>meadow</b>; rivers that start on high ground (<b>River sources</b>, a fraction of the land height) and run to the sea or a lake; <b>Waterfalls</b> where a river drops over a tier or cliff (the water steps down into a plunge pool, a white sheet in 3D, a blue tile on the map); <b>Landmarks</b>: cliff walkway, rock arch over a river, crashed wreck, stranded platform, each on a flattened pad with a graded ramp up (letters on the map, models in 3D). The generator note shows how much land is over 15° and over the walkable limit, and the largest flat area. Falls and landmarks go into the export, project and undo. The older noise presets are under <b>Classic</b>. It takes a few seconds in the background.</li>
       <li><b>Sculpt</b> the big moves first with a large brush: Raise / Lower whole areas, <b>Flatten</b> plateaus and build sites, <b>Ramp</b> roads between them, <b>River</b> to carve valleys to the sea. Then <b>Smooth</b>, <b>Roughen</b> or <b>Terrace</b> for the finish.</li>
       <li><b>Auto biome</b> (Climate mode): temperature from height, rain from the wind (wet near water and on the windward side of mountains, dry in their rain shadow), so biomes come out as whole regions: forests, plains, a desert, swamps on wet lowland, snow up high, rock on steep faces, beaches. Wind, moisture and region size are in the dialog. Re-run it after sculpting; your hand-painted water stays. <b>Classic</b> mode is the old rules + noise patches.</li>
       <li><b>Biome</b> brush / <b>Fill</b> for the details: lakes, ponds, swamps, a desert.</li>
@@ -544,7 +557,7 @@
     <ul>
       <li><b>File</b>: project (.tmproj), 16-bit height PNG and biome PNG in and out, and older one-image maps (converted to two layers).</li>
       <li><b>Import .h / .bin</b> (or drop it on the page): reopens a game export of any format or version for editing. Water is recomputed; a <code>.bin</code> asks for the Min height.</li>
-      <li><b>Export</b>: a C header or a <code>.bin</code> with the full grid, biome ids, water surface and chunk info. Formats: uint16 height + uint8 biome, uint8 + uint8, or packed uint16 (<code>h = v &gt;&gt; 4</code>, <code>b = v &amp; 15</code>).</li>
+      <li><b>Export</b>: a C header or a <code>.bin</code> with the full grid, biome ids, water surface and chunk info, plus the waterfalls (<code>name_falls[k] = {x, y, top, bottom, dir, width}</code>) and landmarks (<code>name_landmarks[k] = {type, x, y, z, rot}</code>) in world meters; older files without them still import. Formats: uint16 height + uint8 biome, uint8 + uint8, or packed uint16 (<code>h = v &gt;&gt; 4</code>, <code>b = v &amp; 15</code>).</li>
       <li>Coordinates: Z up, north (+Y) at the top of the map. Pixel (col, row) is world x = col × m/px, y = (H − 1 − row) × m/px.</li>
     </ul>
   </div>
@@ -824,7 +837,7 @@ function genCore() {
   //  Hydraulic: water droplets roll downhill, pick up soil where they speed up and drop it
   //  where they slow down (Lague / Beyer style), which carves gullies and valley floors.
   //  Thermal: soil on slopes steeper than the talus angle slides down, softening noise.
-  function erode(h, w, hgt, mpp, amount, seed, progress) {
+  function erode(h, w, hgt, mpp, amount, seed, progress, keep) {
     const n = w * hgt, rand = rng(seed * 7 + 12345);
     const drops = Math.round(n * 0.09 * amount);
     const R = Math.max(2, Math.round(3 / Math.sqrt(mpp / 2)));       // erosion brush radius, px
@@ -887,7 +900,7 @@ function genCore() {
         let jmax = -1, dmax = talus;
         const n4 = [i - 1, i + 1, i - w, i + w];
         for (let q = 0; q < 4; q++) { const d = z - h[n4[q]]; if (d > dmax) { dmax = d; jmax = n4[q]; } }
-        if (jmax >= 0) { const m = (dmax - talus) * 0.25; tmp[i] -= m; tmp[jmax] += m; }
+        if (jmax >= 0 && !(keep && keep[i])) { const m = (dmax - talus) * 0.25; tmp[i] -= m; tmp[jmax] += m; }
       }
       for (let i = 0; i < n; i++) h[i] += tmp[i];
       if (progress) progress(0.8 + 0.2 * (pass + 1) / passes, "erosion (slopes)");
@@ -906,11 +919,22 @@ function genCore() {
   //   5. rivers along the biggest drainage lines to the sea, a few lakes on them;
   //   6. small terraced rock outcrops and cliffs in sparse patches, a slope cap so open
   //      land stays walkable, optional rough facets on steep faces.
+  // The Traversable preset adds (see "Traversable World: helpers"): a wide flat meadow,
+  // small secondary features, massif ranges, tiered shelves and cliff bands (stage 3b), a
+  // slope cap after erosion (4b), rivers from high ground with waterfalls (5), landmarks (7).
+  //   tiers 0-1, tierH m: shelf strength and step height; cliffs 0-1: cliff bands
+  //   targetSlope deg (0 = off): open land is capped at this slope after erosion
+  //   mountStyle "ridge" | "massif"; sourceH 0-1 (0 = rivers traced up from the sea)
+  //   falls, landmarks: target counts; minor: secondary features; wind 0-1: meander
+  //   meadow 0/1: keep one wide flat area free of ranges and cliffs
+  const TRAV_OFF = { tiers: 0, tierH: 4, cliffs: 0, targetSlope: 0, mountStyle: "ridge", sourceH: 0, falls: 0, landmarks: 0, minor: 0, wind: 0, meadow: 0 };
   const WORLD_PRESETS = {
-    island:      { shape: "island",  ranges: 2, mountH: 1.0, plateau: 0.55, rough: 0.5, outcrops: 0.5, erosion: 0.8, rivers: 4, lakes: 2, lift: 0.0 },
-    archipelago: { shape: "archi",   ranges: 1, mountH: 0.8, plateau: 0.4,  rough: 0.5, outcrops: 0.6, erosion: 0.7, rivers: 3, lakes: 1, lift: 0.0 },
-    continent:   { shape: "coast",   ranges: 3, mountH: 1.0, plateau: 0.6,  rough: 0.5, outcrops: 0.5, erosion: 0.9, rivers: 6, lakes: 3, lift: 0.03 },
-    highlands:   { shape: "inland",  ranges: 3, mountH: 1.15, plateau: 0.9, rough: 0.6, outcrops: 0.7, erosion: 0.9, rivers: 5, lakes: 3, lift: 0.12 },
+    traversable: { shape: "island",  ranges: 2, mountH: 0.65, plateau: 0.6, rough: 0.45, outcrops: 0.3, erosion: 0.8, rivers: 5, lakes: 1, lift: 0.0,
+                   tiers: 0.8, tierH: 4, cliffs: 0.5, targetSlope: 15, mountStyle: "massif", sourceH: 0.5, falls: 4, landmarks: 5, minor: 12, wind: 0.7, meadow: 1 },
+    island:      { shape: "island",  ranges: 2, mountH: 1.0, plateau: 0.55, rough: 0.5, outcrops: 0.5, erosion: 0.8, rivers: 4, lakes: 2, lift: 0.0, ...TRAV_OFF },
+    archipelago: { shape: "archi",   ranges: 1, mountH: 0.8, plateau: 0.4,  rough: 0.5, outcrops: 0.6, erosion: 0.7, rivers: 3, lakes: 1, lift: 0.0, ...TRAV_OFF },
+    continent:   { shape: "coast",   ranges: 3, mountH: 1.0, plateau: 0.6,  rough: 0.5, outcrops: 0.5, erosion: 0.9, rivers: 6, lakes: 3, lift: 0.03, ...TRAV_OFF },
+    highlands:   { shape: "inland",  ranges: 3, mountH: 1.15, plateau: 0.9, rough: 0.6, outcrops: 0.7, erosion: 0.9, rivers: 5, lakes: 3, lift: 0.12, ...TRAV_OFF },
   };
   function makeHeapG(cap) {
     const key = new Float64Array(cap), id = new Int32Array(cap);
@@ -951,22 +975,33 @@ function genCore() {
   //   width: core half-width (m) at full height, peak: m, passes: [s, depth] list.
   function rangeProfile(sp, peak, passes, seed) {
     // height along the spine s = 0..1: tapered ends, slow variation, saddles at passes
-    return (s) => {
-      let k = peak * (0.62 + 0.38 * fbm(s * 3.1, 0.5, seed + 301, 3, 0.5) * 1.3) * sstep(0, 0.16, s) * sstep(0, 0.16, 1 - s);
-      for (const [ps, pd] of passes) k *= 1 - pd * Math.exp(-(((s - ps) / 0.045) ** 2));
+    const f = (s) => {
+      // a massif keeps a nearly level top; its passes are shallow notches
+      let k = sp.massif ? peak * (0.95 + 0.05 * fbm(s * 2.2, 0.5, seed + 301, 2, 0.5)) * sstep(0, 0.1, s) * sstep(0, 0.1, 1 - s)
+        : peak * (0.62 + 0.38 * fbm(s * 3.1, 0.5, seed + 301, 3, 0.5) * 1.3) * sstep(0, 0.16, s) * sstep(0, 0.16, 1 - s);
+      for (const [ps, pd] of passes) k *= 1 - pd * (sp.massif ? 0.45 : 1) * Math.exp(-(((s - ps) / 0.045) ** 2));
       return Math.max(0, k);
     };
+    // tabulated: the profile is read once per pixel per segment
+    const N = 2048, tab = new Float32Array(N + 1);
+    for (let j = 0; j <= N; j++) tab[j] = f(j / N);
+    return (s) => { const x = clamp(s, 0, 1) * N, j = Math.min(N - 1, x | 0), u = x - j; return tab[j] + (tab[j + 1] - tab[j]) * u; };
   }
   // Stamp ranges: for every pixel the nearest spine point (normalized distance t = d /
   // local width) gives a concave massif, foothills and ridged spurs.
   function stampRanges(h, w, hgt, mpp, spines, opt, M) {
     const n = w * hgt, T = new Float32Array(n).fill(99), SV = new Float32Array(n), K = new Uint8Array(n).fill(255), E = new Float32Array(n);
+    // massif style: cliffness of the wall at each pixel (only allocated when needed)
+    const CS = spines.some((s) => s.massif) ? new Float32Array(n) : null, cAmt = opt.cliffs || 0;
+    const CQ = CS ? new Int16Array(n).fill(-1) : null, CV = CS ? new Float32Array(n) : null;   // per-pixel cache (segments overlap)
     const slope = Math.tan((opt.coreSlope || 30) * Math.PI / 180);
     for (let q = 0; q < spines.length; q++) {
       const sp = spines[q], pts = sp.pts, prof = sp.prof;
+      // a massif's top is level: the ground under it is pulled to its mean along the spine
+      if (sp.massif) { let sb = 0; for (const p of pts) sb += h[clamp(Math.round(p[1]), 0, hgt - 1) * w + clamp(Math.round(p[0]), 0, w - 1)]; sp.base = sb / pts.length; }
       let maxW = 0;
       for (let k = 0; k < pts.length; k++) { const wk = Math.max(sp.minW || 0, prof(k / (pts.length - 1)) / slope) + 40; sp.wid = sp.wid || []; sp.wid[k] = wk; if (wk > maxW) maxW = wk; }
-      const R = maxW * 2.4 / mpp;
+      const tMax = sp.massif ? 3.3 : 2.6, R = maxW * (sp.massif ? 3.3 : 2.4) / mpp;
       for (let k = 0; k + 1 < pts.length; k++) {
         const a = pts[k], b = pts[k + 1], vx = b[0] - a[0], vy = b[1] - a[1], L2 = Math.max(1e-9, vx * vx + vy * vy);
         const x0 = Math.max(0, Math.floor(Math.min(a[0], b[0]) - R)), x1 = Math.min(w - 1, Math.ceil(Math.max(a[0], b[0]) + R));
@@ -976,13 +1011,26 @@ function genCore() {
           const t = clamp(((c - a[0]) * vx + (r - a[1]) * vy) / L2, 0, 1);
           const d = Math.hypot(c - (a[0] + t * vx), r - (a[1] + t * vy)) * mpp;
           const wd = sp.wid[k] + (sp.wid[k + 1] - sp.wid[k]) * t, tn = d / wd, i = r * w + c;
-          if (tn >= 2.6) continue;
+          if (tn >= tMax) continue;
           // keep the segment that gives the highest ground (continuous where ranges meet)
-          const sv = s0 + (s1 - s0) * t, e = prof(sv) * ((tn < 1 ? Math.pow(1 - tn, 1.55) : 0) + 0.16 * (1 - sstep(0.5, 2.5, tn))) + 1e-6 * (2.6 - tn);
-          if (K[i] === 255) { E[i] = e; T[i] = tn; SV[i] = sv; K[i] = q; continue; }
+          const sv = s0 + (s1 - s0) * t;
+          let e, cs = 0;
+          if (sp.massif) {
+            //----- Massif profile -----||
+            // Flat top (tn < 0.55), then around the edge either a cliff wall
+            // (drops to 35% in a short band, then gentle foothills) or a long gentle ramp.
+            // (a smooth field over the map, so walls and ramps meet without seams)
+            if (CQ[i] !== q) { CQ[i] = q; CV[i] = sstep(-0.08, 0.08, fbm(c * mpp / 320, r * mpp / 320, sp.seed + 311, 2, 0.5) + (cAmt - 0.5) * 0.5); }
+            cs = CV[i];
+            const rt = clamp((tn - 0.55) / 2.65, 0, 1), ramp = 1 - 0.5 * (rt + rt * rt * (3 - 2 * rt));   // long, near-even grade
+            const wall = tn < 0.55 ? 1 : tn < 0.63 ? 1 - 0.65 * sstep(0.55, 0.63, tn) : 0.35 * (1 - sstep(0.63, 2.0, tn));
+            e = prof(sv) * (ramp + (wall - ramp) * cs) + 1e-6 * (tMax - tn);
+          } else e = prof(sv) * ((tn < 1 ? Math.pow(1 - tn, 1.55) : 0) + 0.16 * (1 - sstep(0.5, 2.5, tn))) + 1e-6 * (tMax - tn);
+          if (K[i] === 255) { E[i] = e; T[i] = tn; SV[i] = sv; K[i] = q; if (CS) CS[i] = cs; continue; }
           // smooth max, so crossing ranges and spine bends blend instead of creasing
-          const a0 = E[i], kk = 0.3 * Math.max(a0, e) + 1, hb = Math.max(kk - Math.abs(a0 - e), 0) / kk;
-          if (e > a0) { T[i] = tn; SV[i] = sv; K[i] = q; }
+          // (a hard max along one massif, so its top stays level at the bends)
+          const a0 = E[i], kk = sp.massif && K[i] === q ? 1e-9 : 0.3 * Math.max(a0, e) + 1, hb = Math.max(kk - Math.abs(a0 - e), 0) / kk;
+          if (e > a0) { T[i] = tn; SV[i] = sv; K[i] = q; if (CS) CS[i] = cs; }
           E[i] = Math.max(a0, e) + hb * hb * kk * 0.25;
         }
       }
@@ -996,9 +1044,17 @@ function genCore() {
       const x = c * mpp, y = (hgt - 1 - r) * mpp;
       // The envelope E is continuous where ranges and segments meet; ridged noise (spurs,
       // peaks along the crest) and uneven flanks only scale it, so no seams.
-      const sd = spines[0].seed, rid = ridged(x / lam, y / lam, sd + 9, 5, 0.5);
-      const fl = fbm(x / (lam * 1.3), y / (lam * 1.3), sd + 13, 4, 0.55);
-      h[i] += e * (0.62 + 0.62 * rid + 0.22 * fl);
+      const sd = spines[0].seed;
+      if (spines[K[i]].massif) {
+        // flat-topped: only a gentle swell, no ridged spurs; the wall band is a planned cliff
+        const sp = spines[K[i]], lv = clamp(e / Math.max(1, sp.prof(SV[i])), 0, 1);
+        h[i] += (sp.base - h[i]) * lv + e * (0.97 + 0.05 * fbm(x / (lam * 1.3), y / (lam * 1.3), sd + 13, 3, 0.55));
+        if (opt.cliff && CS[i] > 0.5 && T[i] > 0.5 && T[i] < 0.7 && e > opt.top * 0.12) opt.cliff[i] = 1;
+      } else {
+        const rid = ridged(x / lam, y / lam, sd + 9, 5, 0.5);
+        const fl = fbm(x / (lam * 1.3), y / (lam * 1.3), sd + 13, 4, 0.55);
+        h[i] += e * (0.62 + 0.62 * rid + 0.22 * fl);
+      }
       M[i] = Math.max(M[i], sstep(0.04, 0.4, e / opt.top));
     }
   }
@@ -1007,8 +1063,10 @@ function genCore() {
     for (let tries = 0; tries < 80; tries++) {
       const c = 0.12 * w + rand() * 0.76 * w, r = 0.12 * hgt + rand() * 0.76 * hgt;
       if (land(c | 0, r | 0) < opt.inland) continue;
+      if (opt.ok && !opt.ok(c, r)) continue;
       let far = true;
-      for (const e of existing) for (const p of e.pts) if (Math.hypot(p[0] - c, p[1] - r) * mpp < Sz * 0.16) { far = false; break; }
+      const gap = Sz * (opt.gap || 0.16);
+      for (const e of existing) for (const p of e.pts) if (Math.hypot(p[0] - c, p[1] - r) * mpp < gap) { far = false; break; }
       if (!far) continue;
       const L = Sz * (opt.lenLo + rand() * (opt.lenHi - opt.lenLo)), step = Math.max(mpp * 2, Sz / 90), nst = Math.max(6, Math.round(L / step));
       const a0 = rand() * Math.PI * 2, bend = 0.9 + rand() * 0.8;
@@ -1019,10 +1077,11 @@ function genCore() {
         const half = [];
         for (let k = 0; k < nst / 2; k++) {
           const s = k / nst;
-          const turn = fbm(s * 4 + idx * 7.1, dir * 3.3, seed + 211 + idx, 2, 0.5) * bend;
+          const turn = fbm(s * 4 * (opt.windF || 1) + idx * 7.1, dir * 3.3, seed + 211 + idx, 2, 0.5) * bend * (opt.windMul || 1);
           const ax = a + turn;
           x += Math.cos(ax) * step / mpp; y -= Math.sin(ax) * step / mpp;
           if (x < 2 || y < 2 || x > w - 3 || y > hgt - 3) break;
+          if (opt.avoid && Math.hypot(x - opt.avoid[0], y - opt.avoid[1]) < opt.avoid[2] * 1.15) break;
           half.push([x, y]);
         }
         if (dir > 0) pts.push(...half.reverse(), [c, r]); else pts.push(...half);
@@ -1096,9 +1155,9 @@ function genCore() {
     }
     return p;
   }
-  // Carve a river channel along pts ([col, row, widthFactor 0..1], source first). The bed
-  // never rises downstream. Sets wmask = 1 inside the channel.
-  function carveChannel(h, w, hgt, mpp, pts, wmask, sea) {
+  // River bed along pts ([col, row, widthFactor 0..1], source first): the ground under
+  // the path minus the channel depth, never rising downstream. hw = half width (px).
+  function channelBed(h, w, hgt, mpp, pts) {
     const bil = (x, y) => {
       const c = clamp(x | 0, 0, w - 2), r = clamp(y | 0, 0, hgt - 2), u = clamp(x - c, 0, 1), v = clamp(y - r, 0, 1), i = r * w + c;
       return (h[i] * (1 - u) + h[i + 1] * u) * (1 - v) + (h[i + w] * (1 - u) + h[i + w + 1] * u) * v;
@@ -1107,13 +1166,20 @@ function genCore() {
     for (let k = 0; k < m; k++) {
       const f = pts[k][2];
       hw[k] = Math.max(1.2, (2.5 + 7 * f) / mpp);
-      const depth = 1.2 + 1.6 * f;
-      // the lowest ground across the channel, so the bed follows the valley floor
-      let z = bil(pts[k][0], pts[k][1]);
-      bed[k] = z - depth;
+      // the ground under the path, so the bed follows the valley floor
+      bed[k] = bil(pts[k][0], pts[k][1]) - (1.2 + 1.6 * f);
       if (k) bed[k] = Math.min(bed[k], bed[k - 1] - 0.002 * mpp);
     }
-    const bank = 4;
+    return { bed, hw };
+  }
+  // Carve a river channel along pts. The bed never rises downstream. Sets wmask = 1
+  // inside the channel. bedIn: an edited channelBed (waterfalls kept as steps).
+  function carveChannel(h, w, hgt, mpp, pts, wmask, sea, bedIn) {
+    const cb = bedIn || channelBed(h, w, hgt, mpp, pts);
+    carveWith(h, w, hgt, mpp, pts, wmask, sea, cb.bed, cb.hw);
+  }
+  function carveWith(h, w, hgt, mpp, pts, wmask, sea, bed, hw) {
+    const bank = 4, m = pts.length;
     for (let k = 0; k + 1 < m; k++) {
       const a = pts[k], b = pts[k + 1], vx = b[0] - a[0], vy = b[1] - a[1], L2 = Math.max(1e-9, vx * vx + vy * vy);
       const R = Math.max(hw[k], hw[k + 1]) + bank;
@@ -1131,6 +1197,415 @@ function genCore() {
       }
     }
   }
+  //----- Traversable World: helpers -----||
+  // Stages used by the Traversable preset (all off in the older presets, so those maps
+  // stay the same): a wide flat meadow, small secondary features, tiered shelves with
+  // planned cliff bands, a slope cap, rivers from high ground, waterfalls, landmarks.
+  // Box blur (running sum), rows then columns; 3 passes is close to a Gaussian.
+  function blurG(src, w, hgt, rad, passes) {
+    let a = Float32Array.from(src), b = new Float32Array(src.length);
+    for (let p = 0; p < passes; p++) {
+      for (let r = 0; r < hgt; r++) {
+        const o = r * w; let s = 0, cnt = 0;
+        for (let c = 0; c <= Math.min(rad, w - 1); c++) { s += a[o + c]; cnt++; }
+        for (let c = 0; c < w; c++) {
+          b[o + c] = s / cnt;
+          const ad = c + rad + 1, rm = c - rad;
+          if (ad < w) { s += a[o + ad]; cnt++; }
+          if (rm >= 0) { s -= a[o + rm]; cnt--; }
+        }
+      }
+      for (let c = 0; c < w; c++) {
+        let s = 0, cnt = 0;
+        for (let r = 0; r <= Math.min(rad, hgt - 1); r++) { s += b[r * w + c]; cnt++; }
+        for (let r = 0; r < hgt; r++) {
+          a[r * w + c] = s / cnt;
+          const ad = r + rad + 1, rm = r - rad;
+          if (ad < hgt) { s += b[ad * w + c]; cnt++; }
+          if (rm >= 0) { s -= b[rm * w + c]; cnt--; }
+        }
+      }
+    }
+    return a;
+  }
+  // Distance (px) from (c, r) to a polyline, and the position along it (0..1).
+  function polyDist(pts, c, r) {
+    let best = Infinity, bs = 0;
+    for (let k = 0; k + 1 < pts.length; k++) {
+      const a = pts[k], b = pts[k + 1], vx = b[0] - a[0], vy = b[1] - a[1], L2 = Math.max(1e-9, vx * vx + vy * vy);
+      const t = clamp(((c - a[0]) * vx + (r - a[1]) * vy) / L2, 0, 1), d = Math.hypot(c - (a[0] + t * vx), r - (a[1] + t * vy));
+      if (d < best) { best = d; bs = (k + t) / (pts.length - 1); }
+    }
+    return [best, bs];
+  }
+  // Secondary features along a short spine (reference points between the big shapes):
+  //   0 minor ridge, 1 small tier cluster (stacked mesas the tier stage turns into
+  //   shelves), 2 narrow valley.
+  function stampMinor(h, w, hgt, mpp, sp, kind, X) {
+    const pts = sp.pts, rnd = X.rand;
+    const wd = kind === 0 ? (28 + 26 * rnd()) / mpp : kind === 2 ? (14 + 12 * rnd()) / mpp : 0;
+    const amp = kind === 0 ? X.Rt * (0.06 + 0.06 * rnd()) : kind === 2 ? 4 + 5 * rnd() : 0;
+    if (kind === 1) {
+      // 3-5 overlapping round mesas along the spine, 1-3 tier steps tall
+      const nb = 3 + (rnd() * 3 | 0);
+      for (let q = 0; q < nb; q++) {
+        const p = pts[Math.min(pts.length - 1, Math.round((q + 0.5) / nb * (pts.length - 1)))];
+        const rad = (18 + 28 * rnd()) / mpp, up = X.tierH * (1 + (rnd() * 2.6 | 0));
+        const x0 = Math.max(0, p[0] - rad * 1.3 | 0), x1 = Math.min(w - 1, p[0] + rad * 1.3 | 0), y0 = Math.max(0, p[1] - rad * 1.3 | 0), y1 = Math.min(hgt - 1, p[1] + rad * 1.3 | 0);
+        for (let r = y0; r <= y1; r++) for (let c = x0; c <= x1; c++) {
+          const i = r * w + c, d = Math.hypot(c - p[0], r - p[1]) / rad;
+          if (d >= 1.15 || h[i] < X.sea + 1) continue;
+          const add = up * (1 - sstep(0.75, 1.15, d + 0.15 * noise(c * mpp / 25, r * mpp / 25, X.seed + 911 + q)));
+          if (add > (X.mesa[i] || 0)) { h[i] += add - X.mesa[i]; X.mesa[i] = add; }
+        }
+      }
+      return;
+    }
+    let x0 = w, x1 = 0, y0 = hgt, y1 = 0;
+    for (const p of pts) { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); }
+    const R = wd * 2.2;
+    x0 = Math.max(0, x0 - R | 0); x1 = Math.min(w - 1, x1 + R | 0); y0 = Math.max(0, y0 - R | 0); y1 = Math.min(hgt - 1, y1 + R | 0);
+    for (let r = y0; r <= y1; r++) for (let c = x0; c <= x1; c++) {
+      const i = r * w + c;
+      if (h[i] < X.sea + 1) continue;
+      const [d, s] = polyDist(pts, c, r), t = d / wd;
+      if (t >= 2.2) continue;
+      const taper = sstep(0, 0.25, s) * sstep(0, 0.25, 1 - s);
+      if (kind === 0) h[i] += amp * taper * ((t < 1 ? Math.pow(1 - t, 1.4) : 0) + 0.15 * (1 - sstep(0.5, 2.2, t)));
+      else if (t < 1) h[i] = Math.max(X.sea + 0.8, h[i] - amp * taper * (1 - t * t) * (1 - t * t));
+    }
+  }
+  //----- Tier Stage -----||
+  // Snap the broad (blurred) height into flat shelves tierH apart with short risers; the
+  // fine detail rides on top at reduced strength, so shelves undulate a little. In cliff
+  // zones (curved bands from a noise field, with gaps where you can walk up) every third
+  // step is merged into one tall, sharp riser: a planned cliff band (marked in C).
+  function tierStage(h, w, hgt, mpp, X) {
+    const n = w * hgt, Bh = blurG(h, w, hgt, Math.max(2, Math.round(14 / mpp)), 3), CZ = new Float32Array(n);
+    const th = 0.32 - 0.5 * X.cliffs, stp = X.tierH, big = stp * 3;
+    for (let r = 0; r < hgt; r++) {
+      const y = (hgt - 1 - r) * mpp;
+      for (let c = 0; c < w; c++) {
+        const i = r * w + c, x = c * mpp, b = Bh[i];
+        if (b < X.sea + 0.5 || X.Lf[i] < 0) continue;
+        const md = X.MD ? X.MD[i] : 0, det = h[i] - b;
+        const ph = stp * 0.5 * fbm(x / 700, y / 700, X.seed + 801, 2, 0.5), base = X.sea + 1 - ph;
+        const f1 = (b - base) / stp, l1 = Math.floor(f1), small = (l1 + sstep(0.62, 1, f1 - l1)) * stp;
+        let cz = X.cliffs > 0 ? sstep(th, th + 0.07, fbm(x / 380, y / 380, X.seed + 803, 3, 0.5)) * (1 - md) : 0;
+        cz *= sstep(4, 12, b - X.sea);
+        let tz = small;
+        if (cz > 0) { const f3 = (b - base) / big, l3 = Math.floor(f3); tz = small + ((l3 + sstep(0.93, 1, f3 - l3)) * big - small) * cz; }
+        CZ[i] = cz;
+        const amt = Math.max(X.tiers, cz) * sstep(0.5, 3, b - X.sea) * (1 - 0.5 * X.M[i]) * (1 - 0.65 * md);
+        h[i] = b + (base + tz - b) * amt + det * (1 - 0.45 * amt) * (1 - 0.7 * md);
+      }
+    }
+    // planned cliffs: steep pixels in the cliff zones (one pixel margin)
+    const t40 = Math.tan(40 * Math.PI / 180) * 2 * mpp;
+    for (let r = 1; r < hgt - 1; r++) for (let c = 1; c < w - 1; c++) {
+      const i = r * w + c;
+      if (CZ[i] < 0.35) continue;
+      if (Math.hypot(h[i + 1] - h[i - 1], h[i + w] - h[i - w]) > t40) X.C[i] = 2;
+    }
+    for (let i = w; i < n - w; i++) if (X.C[i] === 2) { X.C[i] = 1; for (const j of [i - 1, i + 1, i - w, i + w]) if (!X.C[j]) X.C[j] = 3; }
+    for (let i = 0; i < n; i++) if (X.C[i] === 3) X.C[i] = 1;
+  }
+  //----- Slope Cap -----||
+  // Lower envelope with a maximum slope: h <= h(neighbour) + distance * tan(limit). Two
+  // chamfer sweeps (forward, backward), repeated, make open land no steeper than the
+  // target angle anywhere; planned cliffs (C) may be steep. Only ever lowers land, the
+  // sea floor is left alone (counted as sea level, so coasts don't get cut back), and so
+  // are cells marked in fixed (water, after the rivers are carved).
+  // Before the exact cap: talus relaxation on a coarse grid (cells 4 px), material moves
+  // downhill until slopes are under the limit, so steep sides become smooth aprons that
+  // fill the valley floors instead of flat cut facets. Added back as a smooth difference.
+  function slopeRelax(h, w, hgt, mpp, sea, deg, C) {
+    const f = 4, cw = Math.ceil((w - 1) / f) + 1, ch = Math.ceil((hgt - 1) / f) + 1, m = cw * ch;
+    const hc = new Float32Array(m), cc = new Uint8Array(m);
+    for (let j = 0; j < ch; j++) for (let i = 0; i < cw; i++) {
+      let s = 0, q = 0, k = j * cw + i;
+      for (let y = j * f - 2; y <= j * f + 2; y++) for (let x = i * f - 2; x <= i * f + 2; x++) {
+        if (x < 0 || y < 0 || x >= w || y >= hgt) continue;
+        s += h[y * w + x]; q++; if (C[y * w + x]) cc[k] = 1;
+      }
+      hc[k] = s / q;
+    }
+    const h0 = Float32Array.from(hc), t = Math.tan(deg * Math.PI / 180) * f * mpp, tmp = new Float32Array(m);
+    for (let it = 0; it < 240; it++) {
+      tmp.fill(0);
+      let moved = 0;
+      for (let j = 1; j < ch - 1; j++) for (let i = 1; i < cw - 1; i++) {
+        const k = j * cw + i, z = hc[k];
+        if (z <= sea || cc[k]) continue;
+        let jm = -1, dm = t;
+        if (z - hc[k - 1] > dm) { dm = z - hc[k - 1]; jm = k - 1; }
+        if (z - hc[k + 1] > dm) { dm = z - hc[k + 1]; jm = k + 1; }
+        if (z - hc[k - cw] > dm) { dm = z - hc[k - cw]; jm = k - cw; }
+        if (z - hc[k + cw] > dm) { dm = z - hc[k + cw]; jm = k + cw; }
+        if (jm < 0) continue;
+        const mv = (dm - t) * 0.3;
+        tmp[k] -= mv; if (hc[jm] > sea) tmp[jm] += mv; moved += mv;
+      }
+      for (let k = 0; k < m; k++) hc[k] += tmp[k];
+      if (moved < m * 0.0005) break;
+    }
+    for (let r = 0; r < hgt; r++) for (let c = 0; c < w; c++) {
+      const x = c / f, y = r / f, i = Math.min(cw - 2, x | 0), j = Math.min(ch - 2, y | 0), u = x - i, v = y - j, k = j * cw + i;
+      const d0 = hc[k] - h0[k], d1 = hc[k + 1] - h0[k + 1], d2 = hc[k + cw] - h0[k + cw], d3 = hc[k + cw + 1] - h0[k + cw + 1], p = r * w + c;
+      if (h[p] < sea || C[p]) continue;
+      h[p] = Math.max(sea + 0.2, h[p] + (d0 * (1 - u) + d1 * u) * (1 - v) + (d2 * (1 - u) + d3 * u) * v);
+    }
+  }
+  function slopeCap(h, w, hgt, mpp, sea, deg, C, fixed) {
+    const n = w * hgt, g = new Float32Array(n), t = Math.tan(deg * Math.PI / 180) * mpp, tc = Math.tan(80 * Math.PI / 180) * mpp, d2 = Math.SQRT2, d5 = Math.sqrt(5);   // 16-direction chamfer: near-round cones, no octagon creases
+    for (let i = 0; i < n; i++) g[i] = h[i] < sea ? sea : h[i];
+    const relax = (i, j, d) => { const lim = g[j] + d * (C[i] || C[j] ? tc : t); if (g[i] > lim && h[i] >= sea && !(fixed && fixed[i])) g[i] = lim; };
+    for (let it = 0; it < 3; it++) {
+      for (let r = 0; r < hgt; r++) for (let c = 0; c < w; c++) {
+        const i = r * w + c;
+        if (c > 0) relax(i, i - 1, 1);
+        if (r > 0) { relax(i, i - w, 1); if (c > 0) relax(i, i - w - 1, d2); if (c < w - 1) relax(i, i - w + 1, d2); if (c > 1) relax(i, i - w - 2, d5); if (c < w - 2) relax(i, i - w + 2, d5); }
+        if (r > 1) { if (c > 0) relax(i, i - 2 * w - 1, d5); if (c < w - 1) relax(i, i - 2 * w + 1, d5); }
+      }
+      for (let r = hgt - 1; r >= 0; r--) for (let c = w - 1; c >= 0; c--) {
+        const i = r * w + c;
+        if (c < w - 1) relax(i, i + 1, 1);
+        if (r < hgt - 1) { relax(i, i + w, 1); if (c < w - 1) relax(i, i + w + 1, d2); if (c > 0) relax(i, i + w - 1, d2); if (c < w - 2) relax(i, i + w + 2, d5); if (c > 1) relax(i, i + w - 2, d5); }
+        if (r < hgt - 2) { if (c < w - 1) relax(i, i + 2 * w + 1, d5); if (c > 0) relax(i, i + 2 * w - 1, d5); }
+      }
+    }
+    for (let i = 0; i < n; i++) if (h[i] >= sea) h[i] = g[i];
+  }
+  //----- Rivers From High Ground -----||
+  // Sources on plateau tops and crests above sourceH of the land height range, traced
+  // downhill along the drainage (receivers of a fresh priority flood) to the sea or the
+  // map edge. The longest paths win; a later river that reaches an earlier one joins it.
+  function riversFromHigh(h, w, hgt, mpp, X) {
+    const { f, cw, ch, sea, Sz } = X;
+    const hc = new Float32Array(cw * ch);
+    for (let j = 0; j < ch; j++) for (let i = 0; i < cw; i++) hc[j * cw + i] = h[Math.min(hgt - 1, j * f) * w + Math.min(w - 1, i * f)];
+    const dr = streamPower(hc, cw, ch, f * mpp, sea, 1, 0), { rec, A } = dr;
+    let hmax = sea;
+    for (let k = 0; k < cw * ch; k++) if (hc[k] > hmax) hmax = hc[k];
+    const thr = sea + X.sourceH * (hmax - sea), edge = (k) => { const i = k % cw, j = (k - i) / cw; return i < 2 || j < 2 || i > cw - 3 || j > ch - 3; };
+    const cand = [];
+    for (let j = 3; j < ch - 3; j += 3) for (let i = 3; i < cw - 3; i += 3) {
+      const k = j * cw + i;
+      if (hc[k] >= thr && (!X.C || !X.C[Math.min(hgt - 1, j * f) * w + Math.min(w - 1, i * f)])) cand.push([k, hc[k] + (hash(i, j, X.seed + 977) & 1023) / 1023 * (hmax - sea) * 0.15]);
+    }
+    cand.sort((a, b) => b[1] - a[1]);
+    const paths = [], picked = [];
+    for (const [k0] of cand) {
+      if (paths.length >= 80) break;
+      const i0 = k0 % cw, j0 = (k0 - i0) / cw;
+      if (picked.some((q) => Math.hypot(q[0] - i0, q[1] - j0) * f * mpp < Sz * 0.1)) continue;
+      const path = [k0];
+      let k = k0, ok = false;
+      for (let g = 0; g < cw * ch; g++) {
+        const r = rec[k];
+        if (r === k) { ok = hc[k] <= sea || edge(k); break; }
+        k = r; path.push(k);
+        if (hc[k] <= sea) { ok = true; break; }
+      }
+      if (!ok || path.length < 8) continue;
+      picked.push([i0, j0]); paths.push(path);
+    }
+    // longest first; truncate where a path meets an accepted river
+    const len = (p) => { let s = 0; for (let q = 1; q < p.length; q++) { const a = p[q - 1], b = p[q]; s += Math.hypot((a % cw) - (b % cw), ((a / cw) | 0) - ((b / cw) | 0)); } return s * f * mpp; };
+    paths.sort((a, b) => len(b) - len(a));
+    const used = new Uint8Array(cw * ch), out = [];
+    for (const p of paths) {
+      if (out.length >= X.nRivers) break;
+      let cut = p.length;
+      for (let q = 0; q < p.length; q++) if (used[p[q]]) { cut = q + 1; break; }
+      const part = p.slice(0, cut);
+      if (len(part) < Sz * (cut < p.length ? 0.1 : 0.15)) continue;
+      for (const k of part) { const i = k % cw, j = (k - i) / cw; for (let y = j - 1; y <= j + 1; y++) for (let x = i - 1; x <= i + 1; x++) if (x >= 0 && y >= 0 && x < cw && y < ch) used[y * cw + x] = 1; }
+      let Amax = 1; for (const k of part) Amax = Math.max(Amax, A[k]);
+      const pts = part.map((k) => { const i = k % cw, j = (k - i) / cw; return [i * f, j * f, clamp(Math.sqrt(A[k] / Amax), 0.15, 1)]; });
+      out.push({ pts, joins: cut < p.length, len: len(part) });
+    }
+    return out;
+  }
+  // Moving average of the grid path (keeps the ends), so D8 zig-zags become curves.
+  function smoothPath(p, rad) {
+    return p.map((q, k) => {
+      if (k === 0 || k === p.length - 1) return q.slice();
+      let x = 0, y = 0, m = 0;
+      for (let j = Math.max(0, k - rad); j <= Math.min(p.length - 1, k + rad); j++) { x += p[j][0]; y += p[j][1]; m++; }
+      return [x / m, y / m, q[2]];
+    });
+  }
+  // Meanders: shift the smoothed path sideways by a slow noise. A shift that would climb
+  // the valley side is halved (then dropped), so rivers wind along the floor.
+  function meander(h, w, hgt, mpp, pts, idx, X) {
+    const sh = pts.map((q) => q.slice()), hAt = (c, r) => h[clamp(Math.round(r), 0, hgt - 1) * w + clamp(Math.round(c), 0, w - 1)];
+    const mul = 1 + 0.5 * X.wind;
+    for (let k = 1; k + 1 < pts.length; k++) {
+      const a = pts[k - 1], b = pts[k + 1], tx = b[0] - a[0], ty = b[1] - a[1], tl = Math.hypot(tx, ty) || 1;
+      const amp = mul * (12 + 22 * pts[k][2]) / mpp * Math.min(1, k / 8) * Math.min(1, (pts.length - 1 - k) / 8);
+      let o = amp * fbm(k * mpp * 0.35 / (70 * (1 + 1.2 * X.wind)), idx * 5.3, X.seed + 333, 2, 0.5) * 2;
+      const z0 = hAt(pts[k][0], pts[k][1]);
+      for (let tr = 0; tr < 3; tr++) { if (hAt(pts[k][0] - ty / tl * o, pts[k][1] + tx / tl * o) - z0 < 2.5) break; o = tr < 1 ? o * 0.5 : 0; }
+      sh[k][0] = clamp(pts[k][0] - ty / tl * o, 1, w - 2); sh[k][1] = clamp(pts[k][1] + tx / tl * o, 1, hgt - 2);
+    }
+    // the shift is per point; a light smoothing keeps neighbours from zig-zagging
+    for (let k = 1; k + 1 < sh.length; k++) { sh[k][0] = (sh[k - 1][0] + 2 * sh[k][0] + sh[k + 1][0]) / 4; sh[k][1] = (sh[k - 1][1] + 2 * sh[k][1] + sh[k + 1][1]) / 4; }
+    return sh;
+  }
+  //----- Waterfalls -----||
+  // Along each river's bed profile, a drop of at least minDrop within 14 m (a cliff band,
+  // a massif wall or a tall riser) is a waterfall candidate. The biggest nFalls (spaced
+  // apart) are kept as true steps: the bed below the lip jumps straight to the base, a
+  // plunge pool (a small lake, water code 2) is dug at the foot, and the lip is a planned
+  // cliff so later smoothing leaves it. Other drops stay as steep rapids. Water surfaces
+  // are still worked out by the editor's rules, which only ever step DOWN at a fall.
+  function carveRivers(h, w, hgt, mpp, rivers, water, X) {
+    const beds = rivers.map((rv) => channelBed(h, w, hgt, mpp, rv.pts)), falls = [], pools = [];
+    if (X.nFalls > 0) {
+      const minDrop = Math.max(3, 0.7 * X.tierH), cands = [];
+      rivers.forEach((rv, ri) => {
+        const pts = rv.pts, bed = beds[ri].bed, s = [0];
+        for (let k = 1; k < pts.length; k++) s[k] = s[k - 1] + Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]) * mpp;
+        let j = 0;
+        for (let k = 0; k < pts.length; k++) {
+          if (j < k) j = k;
+          while (j + 1 < pts.length && s[j + 1] - s[k] <= 14) j++;
+          const d = bed[k] - bed[j];
+          if (d >= minDrop) cands.push({ ri, k, j, drop: d, s: s[k] });
+        }
+      });
+      cands.sort((a, b) => b.drop - a.drop);
+      for (const cd of cands) {
+        if (falls.length >= X.nFalls) break;
+        const p = rivers[cd.ri].pts[cd.k];
+        if (falls.some((q) => Math.hypot(q.x - p[0], q.y - p[1]) * mpp < 45)) continue;
+        if (water[(p[1] | 0) * w + (p[0] | 0)] || h[(p[1] | 0) * w + (p[0] | 0)] < X.sea + 2) continue;
+        const bed = beds[cd.ri].bed, hw = beds[cd.ri].hw, pts = rivers[cd.ri].pts;
+        // lip: the last point before the bed starts falling fast
+        let k0 = cd.k;
+        while (k0 + 1 < cd.j && bed[k0] - bed[k0 + 1] < 0.08 * mpp) k0++;
+        for (let q = k0 + 1; q <= cd.j; q++) bed[q] = bed[cd.j];
+        const q1 = pts[Math.min(pts.length - 1, cd.j)];
+        falls.push({ x: p[0], y: p[1], top: bed[k0] + 0.8, bottom: bed[cd.j] + 0.8, dir: Math.atan2(-(q1[1] - pts[k0][1]), q1[0] - pts[k0][0]), width: 2 * hw[k0] * mpp, ri: cd.ri, k: k0, j: cd.j, drop: bed[k0] - bed[cd.j] });
+        falls[falls.length - 1].x = pts[k0][0]; falls[falls.length - 1].y = pts[k0][1];
+      }
+    }
+    rivers.forEach((rv, ri) => carveChannel(h, w, hgt, mpp, rv.pts, water, X.sea, beds[ri]));
+    for (const fl of falls) {
+      const pts = rivers[fl.ri].pts, hw = beds[fl.ri].hw, bed = beds[fl.ri].bed;
+      // plunge pool a little way past the base
+      const rp = Math.max(hw[fl.j] * 1.4, (4 + 0.15 * fl.drop) / mpp);
+      let kc = fl.j;
+      while (kc + 1 < pts.length && Math.hypot(pts[kc][0] - pts[fl.j][0], pts[kc][1] - pts[fl.j][1]) < rp * 0.6) kc++;
+      const cx = pts[kc][0], cy = pts[kc][1], floor = bed[fl.j] - 1.0 - 0.04 * fl.drop;
+      for (let r = Math.max(0, cy - rp - 1 | 0); r <= Math.min(hgt - 1, cy + rp + 1 | 0); r++) for (let c = Math.max(0, cx - rp - 1 | 0); c <= Math.min(w - 1, cx + rp + 1 | 0); c++) {
+        const d = Math.hypot(c - cx, r - cy) / rp, i = r * w + c;
+        if (d >= 1 || h[i] < X.sea) continue;
+        // only dig where the ground is near the base (not into the cliff above)
+        if (h[i] > bed[fl.j] + 3 + 0.3 * fl.drop) continue;
+        h[i] = Math.min(h[i], floor + (bed[fl.j] - floor) * d * d * 0.8); water[i] = 2;
+      }
+      pools.push([cx, cy, rp]);
+      // the lip and its banks are a planned cliff (kept by the slope relax and facets)
+      const lr = hw[fl.k] + 4, lx = pts[fl.k][0], ly = pts[fl.k][1];
+      for (let r = Math.max(0, ly - lr | 0); r <= Math.min(hgt - 1, ly + lr + 1 | 0); r++) for (let c = Math.max(0, lx - lr | 0); c <= Math.min(w - 1, lx + lr + 1 | 0); c++) if (Math.hypot(c - lx, r - ly) <= lr) X.C[r * w + c] = 1;
+    }
+    return { falls, pools };
+  }
+  //----- Landmarks -----||
+  // Dramatic spots for set pieces the game places as meshes (a height map can't hold an
+  // overhang or a bridge): cliff_walkway (a cliff top with a big drop and a view),
+  // stranded_platform (a lone spire / the highest rim), rock_arch (over a river in a
+  // valley), crashed_wreck (a wide flat shelf). Each gets a flattened pad and a graded
+  // approach ramp no steeper than the slope cap, so it is reachable on foot.
+  const LANDMARK_TYPES = ["cliff_walkway", "rock_arch", "crashed_wreck", "stranded_platform"];
+  function placeLandmarks(h, w, hgt, mpp, water, rivers, falls, X) {
+    const out = [], sea = X.sea, Sz = X.Sz, tanT = Math.tan((X.tSlope > 0 ? X.tSlope : 18) * Math.PI / 180) * 0.9;
+    const hAt = (c, r) => h[clamp(Math.round(r), 0, hgt - 1) * w + clamp(Math.round(c), 0, w - 1)];
+    const wetAt = (c, r) => water[clamp(Math.round(r), 0, hgt - 1) * w + clamp(Math.round(c), 0, w - 1)];
+    const DIR = []; for (let a = 0; a < 16; a++) DIR.push([Math.cos(a * Math.PI / 8), -Math.sin(a * Math.PI / 8)]);   // world angle -> (dc, dr)
+    const cand = [[], [], [], []], st = Math.max(2, Math.round(6 / mpp)), m = Math.ceil(80 / mpp);
+    for (let r = m; r < hgt - m; r += st) for (let c = m; c < w - m; c += st) {
+      const i = r * w + c, z = h[i];
+      if (water[i] || z < sea + 3) continue;
+      const sl = Math.hypot(h[i + 1] - h[i - 1], h[i + w] - h[i - w]) / (2 * mpp);
+      if (sl > 0.36) continue;                                       // stand on fairly level ground
+      let bd = 0, ba = -1, rmax = -Infinity, flat = 0, ring = 0;
+      for (let a = 0; a < 16; a++) {
+        const [dc, dr] = DIR[a];
+        const z14 = hAt(c + dc * 14 / mpp, r + dr * 14 / mpp), z70 = hAt(c + dc * 70 / mpp, r + dr * 70 / mpp), z40 = hAt(c + dc * 40 / mpp, r + dr * 40 / mpp), z22 = hAt(c + dc * 22 / mpp, r + dr * 22 / mpp);
+        if (z - z14 >= 10 && z - z70 >= 16 && z - z14 > bd) { bd = z - z14; ba = a; }
+        rmax = Math.max(rmax, z40); flat = Math.max(flat, Math.abs(z22 - z)); ring += z22;
+      }
+      if (ba >= 0) cand[0].push({ c, r, z, rot: ba * 22.5, score: bd });
+      if (z - rmax >= 8) { let va = 0, vd = -1e9; for (let a = 0; a < 16; a++) { const d = z - hAt(c + DIR[a][0] * 70 / mpp, r + DIR[a][1] * 70 / mpp); if (d > vd) { vd = d; va = a; } } cand[3].push({ c, r, z, rot: va * 22.5, score: z - rmax }); }
+      if (flat < 1.6 && (!X.MD || X.MD[i] < 0.5)) cand[2].push({ c, r, z: ring / 16, rot: (hash(c, r, X.seed + 31) % 360), score: 3 - flat + (hash(c, r, X.seed + 37) & 255) / 255 });
+    }
+    // arches over rivers where both banks stand well above the water
+    rivers.forEach((rv) => {
+      const pts = rv.pts;
+      for (let k = Math.floor(pts.length * 0.2); k < pts.length * 0.85; k += 6) {
+        const a = pts[Math.max(0, k - 3)], b = pts[Math.min(pts.length - 1, k + 3)], tx = b[0] - a[0], ty = b[1] - a[1], tl = Math.hypot(tx, ty) || 1;
+        const nx = -ty / tl, ny = tx / tl, c = pts[k][0], r = pts[k][1], z0 = hAt(c, r);
+        const s1 = 20 / mpp, za = hAt(c + nx * s1, r + ny * s1), zb = hAt(c - nx * s1, r - ny * s1);
+        if (wetAt(c + nx * s1, r + ny * s1) || wetAt(c - nx * s1, r - ny * s1)) continue;
+        const bank = Math.min(za, zb) - z0;
+        if (bank >= 4) cand[1].push({ c, r, z: Math.min(za, zb), rot: (Math.atan2(-ny, nx) * 180 / Math.PI + 360) % 360, score: bank });
+      }
+    });
+    for (const L of cand) L.sort((a, b) => b.score - a.score);
+    const ptr = [0, 0, 0, 0], order = [0, 2, 3, 1];
+    const far = (q) => out.every((o) => Math.hypot(o.x - q.c, o.y - q.r) * mpp > Sz * 0.12) && falls.every((f) => Math.hypot(f.x - q.c, f.y - q.r) * mpp > 35);
+    for (let round = 0; out.length < X.nMarks && round < 64; round++) {
+      let any = false;
+      for (const t of order) {
+        if (out.length >= X.nMarks) break;
+        const L = cand[t];
+        while (ptr[t] < L.length && !far(L[ptr[t]])) ptr[t]++;
+        if (ptr[t] >= L.length) continue;
+        const q = L[ptr[t]++]; any = true;
+        if (t !== 1) gradePad(h, w, hgt, mpp, water, q, t === 2 ? 10 : 6, tanT, DIR, hAt);
+        out.push({ type: LANDMARK_TYPES[t], x: q.c, y: q.r, z: t === 1 ? q.z : h[q.r * w + q.c], rot: q.rot });
+      }
+      if (!any) break;
+    }
+    return out;
+  }
+  // Flatten a pad (only ground within 4 m of its level, so cliffs aren't filled), then
+  // grade a walkable approach: along the best direction away from the view, clamp the
+  // ground into a band of +-tan * distance around the pad level until it meets the land.
+  function gradePad(h, w, hgt, mpp, water, q, padM, tanT, DIR, hAt) {
+    const z = q.z, R = padM / mpp, B = 6 / mpp;
+    for (let r = Math.max(0, q.r - R - B | 0); r <= Math.min(hgt - 1, q.r + R + B + 1 | 0); r++) for (let c = Math.max(0, q.c - R - B | 0); c <= Math.min(w - 1, q.c + R + B + 1 | 0); c++) {
+      const i = r * w + c, d = Math.hypot(c - q.c, r - q.r);
+      if (water[i] || Math.abs(h[i] - z) > 4) continue;
+      const k = 1 - sstep(R, R + B, d);
+      h[i] += (z - h[i]) * k;
+    }
+    const view = Math.round(q.rot / 22.5) & 15;
+    let best = -1, bc = Infinity;
+    for (let a = 0; a < 16; a++) {
+      const off = Math.min((a - view + 16) & 15, (view - a + 16) & 15);
+      if (off < 4) continue;                                          // not toward the drop
+      const [dc, dr] = DIR[a], cost = Math.abs(hAt(q.c + dc * 40 / mpp, q.r + dr * 40 / mpp) - z) + Math.abs(hAt(q.c + dc * 20 / mpp, q.r + dr * 20 / mpp) - z);
+      if (cost < bc) { bc = cost; best = a; }
+    }
+    if (best < 0) return;
+    const [dc, dr] = DIR[best], half = 2.5 / mpp, blend = 3 / mpp, step = 0.5;
+    for (let d = R; d < R + 120 / mpp; d += step) {
+      const pc = q.c + dc * d, pr = q.r + dr * d;
+      if (pc < 1 || pr < 1 || pc > w - 2 || pr > hgt - 2) break;
+      const lo = z - tanT * (d - R) * mpp, hi = z + tanT * (d - R) * mpp, g0 = hAt(pc, pr);
+      if (g0 >= lo && g0 <= hi && d > R + 4 / mpp) break;
+      for (let r = Math.max(0, pr - half - blend | 0); r <= Math.min(hgt - 1, pr + half + blend + 1 | 0); r++) for (let c = Math.max(0, pc - half - blend | 0); c <= Math.min(w - 1, pc + half + blend + 1 | 0); c++) {
+        const i = r * w + c, dd = Math.hypot(c - pc, r - pr);
+        if (water[i] || dd > half + blend) continue;
+        const k = 1 - sstep(half, half + blend, dd), tz = clamp(h[i], lo, hi);
+        h[i] += (tz - h[i]) * k;
+      }
+    }
+  }
   function generateWorld(p, progress) {
     const P = WORLD_PRESETS[p.preset] || WORLD_PRESETS.island;
     const g = (k) => (p[k] !== undefined && p[k] !== null && p[k] !== "" ? +p[k] : P[k]);
@@ -1141,6 +1616,13 @@ function genCore() {
     const nRanges = clamp(Math.round(g("ranges")), 0, 6), mountH = clamp(g("mountH"), 0, 2), plateau = clamp(g("plateau"), 0, 1);
     const rough = clamp(g("rough"), 0, 1.5), outc = clamp(g("outcrops"), 0, 1.5), er = clamp(g("erosion"), 0, 2);
     const nRivers = clamp(Math.round(g("rivers")), 0, 20), nLakes = clamp(Math.round(g("lakes")), 0, 10), lift = g("lift") || 0;
+    const gz = (k, d) => { const v = g(k); return Number.isFinite(v) ? v : d; };
+    const tiers = clamp(gz("tiers", 0), 0, 1), tierH = clamp(gz("tierH", 4), 1, 20), cliffs = clamp(gz("cliffs", 0), 0, 1), tSlope = clamp(gz("targetSlope", 0), 0, 45);
+    const massif = (p.mountStyle || P.mountStyle) === "massif", sourceH = clamp(gz("sourceH", 0), 0, 1);
+    const nFalls = clamp(Math.round(gz("falls", 0)), 0, 30), nMarks = clamp(Math.round(gz("landmarks", 0)), 0, 30);
+    const nMinor = clamp(Math.round(gz("minor", 0)), 0, 40), wind = clamp(gz("wind", 0), 0, 1), meadowOn = gz("meadow", 0) > 0;
+    // a second random stream for the new stages, so older presets use exactly the old sequence
+    const rand2 = rng(seed * 7919 + 4242), C = new Uint8Array(n);
     const t0 = Date.now(), prog = (f, what) => progress && progress(f, what);
     prog(0, "land shape");
     // 1. Land mask (> 0 is land) and the region field, on a coarse grid.
@@ -1198,21 +1680,58 @@ function genCore() {
         }
       }
     }
+    //----- Meadow -----||
+    // One wide flat or gently rolling area per island (a measuring stick for scale): a
+    // noisy disc inland that ranges, secondary features, cliffs and outcrops stay out of,
+    // with low tiers at most and damped hills.
+    let MD = null, meadow = null;
+    if (meadowOn) {
+      let bl = -1;
+      for (let t = 0; t < 120; t++) {
+        const c = (0.15 + 0.7 * rand2()) * w, r = (0.15 + 0.7 * rand2()) * hgt, l = Lf[(r | 0) * w + (c | 0)];
+        if (l > 0.3) { meadow = [c, r]; break; }
+        if (l > bl) { bl = l; meadow = [c, r]; }
+      }
+      const R = Sz * 0.15 / mpp;
+      meadow.push(R); MD = new Float32Array(n);
+      for (let r = Math.max(0, meadow[1] - R * 1.3 | 0); r <= Math.min(hgt - 1, meadow[1] + R * 1.3 | 0); r++) for (let c = Math.max(0, meadow[0] - R * 1.3 | 0); c <= Math.min(w - 1, meadow[0] + R * 1.3 | 0); c++) {
+        const d = Math.hypot(c - meadow[0], r - meadow[1]) / R + 0.15 * fbm(c * mpp / 150, r * mpp / 150, seed + 707, 2, 0.5);
+        MD[r * w + c] = 1 - sstep(0.75, 1.05, d);
+      }
+    }
     prog(0.08, "mountain ranges");
     // 2. Mountain ranges
     const spines = [];
     const landAt = (c, r) => Lf[clamp(r, 0, hgt - 1) * w + clamp(c, 0, w - 1)];
+    const winding = { windMul: 1 + 1.2 * wind, windF: 1 + 0.8 * wind };
     for (let k = 0; k < nRanges; k++) {
-      const s = makeSpine(w, hgt, mpp, landAt, rand, seed, k, spines, { inland: 0.18, lenLo: 0.45, lenHi: 0.85 });
+      const s = makeSpine(w, hgt, mpp, landAt, rand, seed, k, spines, massif ? { inland: 0.18, lenLo: 0.3, lenHi: 0.55, avoid: meadow, ...winding } : { inland: 0.18, lenLo: 0.45, lenHi: 0.85, avoid: meadow, ...winding });
       if (!s) break;
-      const peak = Rt * mountH * (0.62 + 0.3 * rand());
+      const peak = Rt * mountH * (0.62 + 0.3 * rand()) * (massif ? 0.85 : 1);
+      if (massif) { s.massif = true; s.minW = peak * 1.6; }
       const np = 1 + (rand() < 0.6 ? 1 : 0), passes = [];
       for (let q = 0; q < np; q++) passes.push([np === 1 ? 0.35 + 0.3 * rand() : (q ? 0.62 : 0.28) + 0.12 * rand(), 0.4 + 0.15 * rand()]);
       s.seed = seed + 1000 + k * 77; s.peak = peak; s.passes = passes;
       s.prof = rangeProfile(s, peak, passes, s.seed);
       spines.push(s);
     }
-    stampRanges(h, w, hgt, mpp, spines, { top: Math.max(1, Rt * mountH), coreSlope: 37, spur: Math.max(60, Rt * mountH * 1.6) }, M);
+    const hPre = MD ? Float32Array.from(h) : null;
+    stampRanges(h, w, hgt, mpp, spines, { top: Math.max(1, Rt * mountH), coreSlope: 37, spur: Math.max(60, Rt * mountH * 1.6), cliff: massif ? C : null, cliffs }, M);
+    if (MD) for (let i = 0; i < n; i++) if (MD[i] > 0) { h[i] = hPre[i] + (h[i] - hPre[i]) * (1 - MD[i]); M[i] *= 1 - MD[i]; C[i] = MD[i] > 0.5 ? 0 : C[i]; }
+    // Secondary features between the big shapes: minor ridges, small tier clusters,
+    // narrow valleys (short winding spines, kept off the ranges and the meadow).
+    const minor = [];
+    if (nMinor > 0) {
+      const X = { rand: rand2, Rt, tierH, sea, seed, mesa: new Float32Array(n) }, all = spines.slice();
+      const ok = (c, r) => { const i = (r | 0) * w + (c | 0); return M[i] < 0.12 && (!MD || MD[i] < 0.02); };
+      for (let k = 0; k < nMinor * 2 && minor.length < nMinor; k++) {
+        const s = makeSpine(w, hgt, mpp, landAt, rand2, seed + 5000, k + 20, all, { inland: 0.06, lenLo: 0.08, lenHi: 0.18, gap: 0.06, ok, avoid: meadow, ...winding });
+        if (!s) continue;
+        const kind = minor.length % 3;
+        s.kind = kind; all.push(s); minor.push(s);
+        stampMinor(h, w, hgt, mpp, s, kind, X);
+      }
+    }
     // under the sea the ranges sink
     for (let i = 0; i < n; i++) if (Lf[i] < 0 && M[i] > 0) h[i] = Math.min(h[i], sea - 0.4 + (h[i] - sea) * sstep(-0.12, 0, Lf[i]));
     prog(0.16, "hills");
@@ -1223,11 +1742,28 @@ function genCore() {
       for (let c = 0; c < w; c++) {
         const i = r * w + c, x = c * mpp;
         if (Lf[i] < -0.05) continue;
-        const k = sstep(-0.05, 0.25, Lf[i]) * (1 - 0.6 * M[i]);
+        const k = sstep(-0.05, 0.25, Lf[i]) * (1 - 0.6 * M[i]) * (MD ? 1 - 0.6 * MD[i] : 1);
         if (k <= 0) continue;
         h[i] += k * (hillA * (fbm(x / 300, y / 300, seed + 61, 3, 0.45) + 0.35 * fbm(x / 95, y / 95, seed + 62, 2, 0.5)) + Rt * 0.08 * fbm(x / 900, y / 900, seed + 63, 3, 0.5));
       }
       if ((r & 63) === 0) prog(0.16 + 0.1 * r / hgt, "hills");
+    }
+    // 3b. Tiers: shelves with short risers, planned cliff bands (C) in the cliff zones.
+    if (tiers > 0 || cliffs > 0 || MD) tierStage(h, w, hgt, mpp, { tiers, tierH, cliffs, sea, seed, Lf, M, MD, C });
+    // the meadow settles to one level with a low crown (a few m), so water runs around it
+    // instead of splitting it, and it stays one wide walkable area
+    if (MD) {
+      let sm = 0, sn = 0;
+      for (let i = 0; i < n; i++) if (MD[i] > 0.5 && h[i] > sea) { sm += h[i]; sn++; }
+      if (sn) {
+        const lv = Math.max(sea + 3, sm / sn), R = meadow[2];
+        for (let r = Math.max(0, meadow[1] - R * 1.3 | 0); r <= Math.min(hgt - 1, meadow[1] + R * 1.3 | 0); r++) for (let c = Math.max(0, meadow[0] - R * 1.3 | 0); c <= Math.min(w - 1, meadow[0] + R * 1.3 | 0); c++) {
+          const i = r * w + c, k = MD[i];
+          if (!(k > 0) || h[i] <= sea) continue;
+          const d = Math.hypot(c - meadow[0], r - meadow[1]) / R, tgt = lv + 4 * Math.max(0, 1 - d * d) + (h[i] - lv) * 0.12;
+          h[i] += (tgt - h[i]) * k * 0.9;
+        }
+      }
     }
     const tShape = Date.now() - t0, t1 = Date.now();
     // 4. Valleys: stream power on a coarse grid (about 512 cells across), added back as a
@@ -1246,6 +1782,7 @@ function genCore() {
     for (let j = 0; j < ch; j++) for (let i = 0; i < cw; i++) {
       const k = j * cw + i, m = M[Math.min(hgt - 1, j * f) * w + Math.min(w - 1, i * f)];
       kMul[k] = 0.3 + 0.7 * m;                                    // open land: gentle valleys only
+      if (C[Math.min(hgt - 1, j * f) * w + Math.min(w - 1, i * f)]) kMul[k] = 0.05;   // planned cliffs stay sharp
       floorZ[k] = Math.max(sea + 0.3, hc0[k] - (3 + Rt * 0.06 + Rt * 0.3 * m) * er);
       if (hc0[k] <= sea) floorZ[k] = -1e9;
     }
@@ -1257,7 +1794,9 @@ function genCore() {
       h[r * w + c] += (d0 * (1 - u) + d1 * u) * (1 - v) + (d2 * (1 - u) + d3 * u) * v;
     }
     // droplets for gullies (lighter than the classic generator)
-    if (er > 0) erode(h, w, hgt, mpp, er * 0.45, seed, (q, what) => prog(0.6 + 0.2 * q, what));
+    if (er > 0) erode(h, w, hgt, mpp, er * 0.45, seed, (q, what) => prog(0.6 + 0.2 * q, what), C);
+    // 4b. Slope cap: open land no steeper than the target, planned cliffs stay.
+    if (tSlope > 0) { slopeRelax(h, w, hgt, mpp, sea, tSlope * 0.8, C); slopeCap(h, w, hgt, mpp, sea, tSlope * 0.9, C); }   // a margin under the target (slopes are measured over 2 px)
     const tErode = Date.now() - t1;
     // 5. Rivers along the biggest drainage lines, from the sea up into the hills.
     prog(0.8, "rivers");
@@ -1272,7 +1811,12 @@ function genCore() {
     mouths.sort((a, b) => A[b] - A[a]);
     const rivers = [], minA = Math.max(30, landCells * 0.012), headA = Math.max(12, landCells * 0.0025);
     const donors = (k) => { const out = [], i = k % cw, j = (k - i) / cw; for (let y = j - 1; y <= j + 1; y++) for (let x = i - 1; x <= i + 1; x++) { if (x < 0 || y < 0 || x >= cw || y >= ch) continue; const m = y * cw + x; if (m !== k && rec[m] === k) out.push(m); } return out; };
-    for (const m0 of mouths) {
+    if (sourceH > 0) for (const rv of riversFromHigh(h, w, hgt, mpp, { f, cw, ch, sea, Sz, sourceH, nRivers, seed, C })) {
+      rv.mouth = [rv.pts[rv.pts.length - 1][0] / f, rv.pts[rv.pts.length - 1][1] / f]; rv.high = true;
+      rv.pts = meander(h, w, hgt, mpp, chaikin(smoothPath(rv.pts, 3), 3), rivers.length, { wind, seed });
+      rivers.push(rv);
+    }
+    for (const m0 of sourceH > 0 ? [] : mouths) {
       if (rivers.length >= nRivers || A[m0] < minA) break;
       const mi = m0 % cw, mj = (m0 - mi) / cw;
       if (rivers.some((rv) => Math.hypot(rv.mouth[0] - mi, rv.mouth[1] - mj) * f * mpp < Sz * 0.1)) continue;
@@ -1304,10 +1848,10 @@ function genCore() {
       }
       rivers.push({ mouth: [mi, mj], pts: sh });
     }
-    for (const rv of rivers) carveChannel(h, w, hgt, mpp, rv.pts, water, sea);
+    const { falls, pools } = carveRivers(h, w, hgt, mpp, rivers, water, { nFalls, tierH, sea, C });
     // Lakes: a bowl on the middle course of a river, on the flattest spot.
     let lakes = 0;
-    const lakeAt = [];
+    const lakeAt = pools.slice();
     for (let q = 0; q < rivers.length * 3 && lakes < nLakes; q++) {
       const rv = rivers[q % rivers.length], pts = rv.pts;
       const lo = Math.floor(pts.length * (0.22 + 0.14 * (Math.floor(q / rivers.length)))), hi = Math.floor(pts.length * (0.55 + 0.1 * Math.floor(q / rivers.length)));
@@ -1359,7 +1903,7 @@ function genCore() {
           const x = c * mpp;
           const patch = sstep(0.42 - 0.12 * outc, 0.62 - 0.12 * outc, fbm(x / 420, y / 420, seed + 71, 3, 0.5) + 0.25 * M[i] * (1 - M[i]) * 4);
           if (patch <= 0) continue;
-          const coreFree = 1 - sstep(0.55, 0.85, M[i]);
+          const coreFree = (1 - sstep(0.55, 0.85, M[i])) * (MD ? 1 - MD[i] : 1);
           const v = fbm(x / 60, y / 60, seed + 72, 3, 0.5), m = patch * coreFree * sstep(sea + 1, sea + 4, h[i]);
           if (m <= 0.05 || v < 0.15) continue;
           // shelves: a first step with a cliff edge, sometimes a second one on top
@@ -1375,10 +1919,17 @@ function genCore() {
     // walkable angle, so lowlands and passes stay traversable.
     const capT = Math.tan(32 * Math.PI / 180) * mpp, steepT = Math.tan(60 * Math.PI / 180) * mpp;
     const tmp = new Float32Array(n), tal = new Float32Array(n);
-    for (let i = 0; i < n; i++) tal[i] = M[i] > 0.5 ? steepT : capT;
+    for (let i = 0; i < n; i++) tal[i] = M[i] > 0.5 || C[i] ? steepT : capT;
     // outcrops keep their steps (a pixel margin around them too)
     for (let r = 1; r < hgt - 1; r++) for (let c = 1; c < w - 1; c++) { const i = r * w + c; if (O[i] || O[i - 1] || O[i + 1] || O[i - w] || O[i + w]) tal[i] = steepT; }
-    for (let pass = 0; pass < 10; pass++) {
+    // with a target slope: the same envelope as 4b again (river banks, lake rims), with
+    // outcrops and planned cliffs kept steep and water left as it is
+    if (tSlope > 0) {
+      const CX = Uint8Array.from(C);
+      for (let i = 0; i < n; i++) if (tal[i] === steepT && M[i] <= 0.5) CX[i] = 1;
+      slopeCap(h, w, hgt, mpp, sea, tSlope * 0.9, CX, water);
+    }
+    for (let pass = 0; pass < (tSlope > 0 ? 0 : 10); pass++) {
       tmp.fill(0);
       for (let r = 1; r < hgt - 1; r++) for (let c = 1; c < w - 1; c++) {
         const i = r * w + c, z = h[i], t = tal[i];
@@ -1391,6 +1942,8 @@ function genCore() {
       }
       for (let i = 0; i < n; i++) h[i] += tmp[i];
     }
+    // 7. Landmarks: pads and approach ramps at dramatic spots (after the slope cap).
+    const landmarks = nMarks > 0 ? placeLandmarks(h, w, hgt, mpp, water, rivers, falls, { nMarks, tSlope, sea, Sz, seed, MD }) : [];
     // Rough facets on steep faces (a low-poly rocky look); off with jitter = false.
     if (p.jitter !== false) {
       const src = Float32Array.from(h);
@@ -1433,7 +1986,30 @@ function genCore() {
       }
     }
     prog(1, "done");
-    return { h, water, ms: { noise: tShape, erosion: tErode }, info: { ranges: spines.length, passes: spines.reduce((a, s) => a + s.passes.length, 0), rivers: rivers.length, lakes } };
+    // feature lists (pixel coordinates; dir/rot in degrees, 0 = east, counter-clockwise)
+    const feat = {
+      falls: falls.map((q) => ({ x: +q.x.toFixed(2), y: +q.y.toFixed(2), top: +q.top.toFixed(2), bottom: +q.bottom.toFixed(2), dir: +((q.dir * 180 / Math.PI + 360) % 360).toFixed(1), width: +q.width.toFixed(2) })),
+      landmarks: landmarks.map((q) => ({ type: q.type, x: q.x, y: q.y, z: +q.z.toFixed(2), rot: +q.rot.toFixed(1) })),
+    };
+    // stats for the generator note: cliff bands (connected planned cliffs), winding
+    let bands = 0;
+    if (C.some((v) => v)) {
+      const seen = new Uint8Array(n), stack = [];
+      for (let i0 = 0; i0 < n; i0++) {
+        if (!C[i0] || seen[i0]) continue;
+        let cnt = 0; stack.push(i0); seen[i0] = 1;
+        while (stack.length) { const i = stack.pop(); cnt++; const c = i % w; for (const j of [c > 0 ? i - 1 : -1, c < w - 1 ? i + 1 : -1, i - w, i + w]) if (j >= 0 && j < n && C[j] && !seen[j]) { seen[j] = 1; stack.push(j); } }
+        if (cnt * mpp * mpp >= 200) bands++;
+      }
+    }
+    const sinu = (pts) => { let L = 0; for (let k = 1; k < pts.length; k++) L += Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]); const a = pts[0], b = pts[pts.length - 1]; return [L * mpp, L / Math.max(1e-6, Math.hypot(b[0] - a[0], b[1] - a[1]))]; };
+    const rs = rivers.map((rv) => sinu(rv.pts)), ss = spines.map((sp) => sinu(sp.pts)[1]);
+    const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
+    return { h, water, feat, ms: { noise: tShape, erosion: tErode }, info: {
+      ranges: spines.length, passes: spines.reduce((a, s) => a + s.passes.length, 0), rivers: rivers.length, lakes,
+      high: rivers.filter((r) => r.high).length, falls: falls.length, landmarks: landmarks.length, minor: minor.length, cliffBands: bands,
+      cliffPct: +(100 * C.reduce((a, v) => a + (v ? 1 : 0), 0) / n).toFixed(2), tierH: tiers > 0 ? tierH : 0, meadow: !!MD,
+      riverLen: Math.round(mean(rs.map((q) => q[0]))), riverSinu: +mean(rs.map((q) => q[1])).toFixed(2), spineSinu: +mean(ss).toFixed(2) } };
   }
 
   return { generate, generateWorld, stampRanges, rangeProfile, erode, terrace, noise, fbm, ridged, hash, rng, PRESETS, WORLD_PRESETS };
@@ -1568,8 +2144,88 @@ function allocMap(w, h) {
   S.w = w; S.h = h;
   const n = w * h;
   H = new Float32Array(n); B = new Uint8Array(n); P = new Uint8Array(n); SEL = new Uint8Array(n); BE = new Uint8Array(n);
+  FEAT = { falls: [], landmarks: [] };   // a new map has no waterfalls / landmarks
   waterDirty = true;
   markAll();
+}
+
+//----- Features (Waterfalls + Landmarks) -----||
+// Point features from the world generator, in pixel coordinates (x = column, y = row,
+// may be fractional). dir / rot in degrees in the world frame (0 = east = +x, 90 =
+// north = up on the map). Heights in meters.
+//   falls:     { x, y, top, bottom, dir, width }  top / bottom = water surface above / below
+//   landmarks: { type, x, y, z, rot }             type: one of LANDMARK_TYPES
+// They live with the map: undo, autosave, project files, resize, export and import.
+const LANDMARK_TYPES = ["cliff_walkway", "rock_arch", "crashed_wreck", "stranded_platform"];
+const LANDMARK_LABEL = { cliff_walkway: "Cliff walkway", rock_arch: "Rock arch", crashed_wreck: "Crashed wreck", stranded_platform: "Stranded platform" };
+let FEAT = { falls: [], landmarks: [] };
+function featClone(f) { return { falls: (f && f.falls || []).map((q) => ({ ...q })), landmarks: (f && f.landmarks || []).map((q) => ({ ...q })) }; }
+// Keep only well-formed entries inside the map (files and saves are not trusted).
+function featSanitize(f, w, h) {
+  const num = (v) => Number.isFinite(+v), inside = (q) => num(q.x) && num(q.y) && q.x >= 0 && q.y >= 0 && q.x <= w - 1 && q.y <= h - 1;
+  const out = { falls: [], landmarks: [] };
+  if (!f || typeof f !== "object") return out;
+  for (const q of Array.isArray(f.falls) ? f.falls : []) if (q && inside(q) && num(q.top) && num(q.bottom) && out.falls.length < 1000)
+    out.falls.push({ x: +q.x, y: +q.y, top: +q.top, bottom: +q.bottom, dir: num(q.dir) ? +q.dir : 0, width: num(q.width) ? Math.max(0, +q.width) : 4 });
+  for (const q of Array.isArray(f.landmarks) ? f.landmarks : []) if (q && inside(q) && LANDMARK_TYPES.includes(q.type) && out.landmarks.length < 1000)
+    out.landmarks.push({ type: q.type, x: +q.x, y: +q.y, z: num(q.z) ? +q.z : 0, rot: num(q.rot) ? +q.rot : 0 });
+  return out;
+}
+// Move / scale features with the map (resize): x' = x * kx + dx; drop what falls outside.
+function featMap(f, kx, ky, dx, dy, w, h) {
+  const m = (q) => ({ ...q, x: q.x * kx + dx, y: q.y * ky + dy, ...(q.width !== undefined ? { width: q.width } : {}) });
+  return featSanitize({ falls: f.falls.map(m), landmarks: f.landmarks.map(m) }, w, h);
+}
+// After the water pass: read the real surfaces just above and below each fall.
+function refineFalls() {
+  if (waterDirty) computeWater();
+  const w = S.w, h = S.h;
+  for (const q of FEAT.falls) {
+    const a = q.dir * Math.PI / 180, dc = Math.cos(a), dr = -Math.sin(a);
+    let top = -Infinity, bot = Infinity;
+    for (let s = -4; s <= 14; s++) {
+      const c = Math.round(q.x + dc * s / S.mpp * 1.5), r = Math.round(q.y + dr * s / S.mpp * 1.5);
+      if (c < 0 || r < 0 || c >= w || r >= h) continue;
+      const z = WS[r * w + c];
+      if (z === NO_WATER || z <= H[r * w + c]) continue;
+      if (s <= 0) top = Math.max(top, z); else bot = Math.min(bot, z);
+    }
+    // Use the measured surfaces only when they still show a drop; else keep the carved values.
+    const t2 = Number.isFinite(top) ? top : q.top, b2 = Number.isFinite(bot) ? bot : q.bottom;
+    if (b2 < t2 - 0.5) { q.top = +t2.toFixed(2); q.bottom = +b2.toFixed(2); }
+  }
+}
+// 2D icons on a map drawn at (ox, oy) with z screen px per map px. Falls: a blue tile with
+// a white drop line and an arrow downstream. Landmarks: a small diamond with a letter.
+const LANDMARK_ICON = { cliff_walkway: ["W", "#ffb44a"], rock_arch: ["A", "#c9a27a"], crashed_wreck: ["X", "#ff5a4a"], stranded_platform: ["P", "#b48cff"] };
+function drawFeatures(ctx, ox, oy, z, small) {
+  if (!FEAT.falls.length && !FEAT.landmarks.length) return;
+  const R = small ? 4 : clamp(3 + z * 2, 6, 11);
+  ctx.save(); ctx.lineJoin = "round";
+  for (const q of FEAT.falls) {
+    const sx = ox + (q.x + 0.5) * z, sy = oy + (q.y + 0.5) * z, a = -q.dir * Math.PI / 180;
+    ctx.fillStyle = "#1f7fe0"; ctx.strokeStyle = "#fff"; ctx.lineWidth = small ? 1 : 1.5;
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(sx - R, sy - R, 2 * R, 2 * R, R * 0.35) : ctx.rect(sx - R, sy - R, 2 * R, 2 * R); ctx.fill(); ctx.stroke();
+    if (!small) {
+      // falling water: three short vertical strokes, then the downstream arrow
+      ctx.beginPath();
+      for (const k of [-0.45, 0, 0.45]) { ctx.moveTo(sx + k * R, sy - R * 0.55); ctx.lineTo(sx + k * R, sy + R * 0.45); }
+      ctx.stroke();
+      const ex = sx + Math.cos(a) * R * 1.9, ey = sy + Math.sin(a) * R * 1.9;
+      ctx.strokeStyle = "#1f7fe0"; ctx.lineWidth = 2; ctx.beginPath();
+      ctx.moveTo(sx + Math.cos(a) * R, sy + Math.sin(a) * R); ctx.lineTo(ex, ey);
+      ctx.lineTo(ex - Math.cos(a - 0.5) * R * 0.6, ey - Math.sin(a - 0.5) * R * 0.6); ctx.moveTo(ex, ey);
+      ctx.lineTo(ex - Math.cos(a + 0.5) * R * 0.6, ey - Math.sin(a + 0.5) * R * 0.6); ctx.stroke();
+    }
+  }
+  ctx.font = `bold ${Math.round(R * 1.1)}px system-ui, sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  for (const q of FEAT.landmarks) {
+    const sx = ox + (q.x + 0.5) * z, sy = oy + (q.y + 0.5) * z, [ch, col] = LANDMARK_ICON[q.type] || ["?", "#fff"];
+    ctx.fillStyle = col; ctx.strokeStyle = "#000"; ctx.lineWidth = small ? 1 : 1.5;
+    ctx.beginPath(); ctx.moveTo(sx, sy - R * 1.2); ctx.lineTo(sx + R * 1.2, sy); ctx.lineTo(sx, sy + R * 1.2); ctx.lineTo(sx - R * 1.2, sy); ctx.closePath(); ctx.fill(); ctx.stroke();
+    if (!small) { ctx.fillStyle = "#000"; ctx.fillText(ch, sx, sy + 0.5); }
+  }
+  ctx.restore();
 }
 // Biome write that keeps BE right until the next water pass: ground that Auto ocean made
 // Ocean stays Ocean when you paint a land biome on it (it is under the sea).
@@ -1593,12 +2249,12 @@ function selectionCount() { let k = 0; for (let i = 0; i < SEL.length; i++) if (
 // fewer steps so the snapshots stay under UNDO_BUDGET bytes.
 const undoStack = [], redoStack = [];
 function undoMax() { return clamp(Math.floor(UNDO_BUDGET / (S.w * S.h * 7)), 3, UNDO_MAX); }
-function snapshot() { return { w: S.w, h: S.h, mpp: S.mpp, H: H.slice(), B: B.slice(), P: P.slice(), SEL: SEL.slice() }; }
+function snapshot() { return { w: S.w, h: S.h, mpp: S.mpp, H: H.slice(), B: B.slice(), P: P.slice(), SEL: SEL.slice(), FEAT: featClone(FEAT) }; }
 function restore(s) {
   const resized = s.w !== S.w || s.h !== S.h || s.mpp !== S.mpp;
   if (s.w !== S.w || s.h !== S.h) allocMap(s.w, s.h);
   S.mpp = s.mpp;
-  H = s.H; B = s.B; P = s.P; SEL = s.SEL; BE = B.slice();
+  H = s.H; B = s.B; P = s.P; SEL = s.SEL; BE = B.slice(); FEAT = featClone(s.FEAT);
   markAll();
   touched(resized);
 }
@@ -1686,12 +2342,13 @@ function loadProject(p) {
 
 // Project file (.tmproj), little-endian:
 //   "TMAPPRJ1", u8 compression (0 = none, 1 = zlib deflate), 3 zero bytes, then the
-//   (compressed) payload: u32 JSON length, JSON {app, kind, version, settings, w, h},
+//   (compressed) payload: u32 JSON length, JSON {app, kind, version, settings, w, h,
+//   features: {falls, landmarks} (optional)},
 //   zero padding to a multiple of 4, float32 height[w*h] (m), u8 biome[w*h],
 //   u8 painted[w*h].
 async function projectBytes() {
   const n = S.w * S.h;
-  const json = new TextEncoder().encode(JSON.stringify({ app: "terrain-maker", kind: "project", version: MAP_VERSION, settings: settingsJSON(), w: S.w, h: S.h }));
+  const json = new TextEncoder().encode(JSON.stringify({ app: "terrain-maker", kind: "project", version: MAP_VERSION, settings: settingsJSON(), w: S.w, h: S.h, features: featClone(FEAT) }));
   const at = (4 + json.length + 3) & ~3;
   const raw = new Uint8Array(at + n * 6);
   new DataView(raw.buffer).setUint32(0, json.length, true);
@@ -1715,6 +2372,7 @@ async function loadProjectBytes(u8) {
   B.set(raw.subarray(at + n * 4, at + n * 5)); P.set(raw.subarray(at + n * 5, at + n * 6));
   for (let i = 0; i < n; i++) if (B[i] >= BIOMES.length) B[i] = B_PLAINS;
   BE.set(B);
+  FEAT = featSanitize(meta.features, w, h);
 }
 
 // Autosave goes to IndexedDB: it stores the raw layers (no base64) and has room for
@@ -1749,7 +2407,7 @@ let saveTimer = 0;
 function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 800); }
 async function saveNow() {
   if (stroke) { scheduleSave(); return; }
-  try { await idbPut(IDB_KEY, { app: "terrain-maker", version: MAP_VERSION, settings: settingsJSON(), w: S.w, h: S.h, H, B, P }); }
+  try { await idbPut(IDB_KEY, { app: "terrain-maker", version: MAP_VERSION, settings: settingsJSON(), w: S.w, h: S.h, H, B, P, features: featClone(FEAT) }); }
   catch (e) { toast("Autosave failed. Use File > Save project."); }
 }
 // Loads the IndexedDB autosave: true, "old" (converted from a one-image map) or false.
@@ -1760,7 +2418,7 @@ function loadAutosave(a) {
   if (a.version >= MAP_VERSION && a.H instanceof Float32Array && a.H.length === n && a.B instanceof Uint8Array && a.B.length === n) {
     applySettings(a.settings); allocMap(w, h);
     H.set(a.H); B.set(a.B); if (a.P instanceof Uint8Array && a.P.length === n) P.set(a.P);
-    BE.set(B);
+    BE.set(B); FEAT = featSanitize(a.features, w, h);
     return true;
   }
   if (a.img instanceof Uint8ClampedArray && a.img.length === n * 4) {
@@ -1775,8 +2433,9 @@ function loadAutosave(a) {
 // Bilinear for height (smooth), nearest for biome (biomes can't be blended).
 // Corner pixels map to corner pixels, so the map stretches to the new edges.
 function resampleTo(nw, nh) {
-  const ow = S.w, oh = S.h, oH = H, oB = B, oP = P;
+  const ow = S.w, oh = S.h, oH = H, oB = B, oP = P, oF = FEAT;
   allocMap(nw, nh);
+  FEAT = featMap(oF, (nw - 1) / Math.max(1, ow - 1), (nh - 1) / Math.max(1, oh - 1), 0, 0, nw, nh);
   const kx = (ow - 1) / Math.max(1, nw - 1), ky = (oh - 1) / Math.max(1, nh - 1);
   for (let r = 0; r < nh; r++) {
     const y = r * ky, y0 = Math.min(oh - 1, Math.floor(y)), y1 = Math.min(oh - 1, y0 + 1), ty = y - y0, yr = Math.min(oh - 1, Math.round(y));
@@ -1794,8 +2453,9 @@ function resampleTo(nw, nh) {
 // corner) and whatever falls outside is cut; new area is sea floor (Min height).
 function cropPadTo(nw, nh, anchor) {
   const ow = S.w, oh = S.h, oH = H, oB = B, oP = P;
-  const dx = anchor === "center" ? Math.floor((nw - ow) / 2) : 0, dy = anchor === "center" ? Math.floor((nh - oh) / 2) : 0;
+  const dx = anchor === "center" ? Math.floor((nw - ow) / 2) : 0, dy = anchor === "center" ? Math.floor((nh - oh) / 2) : 0, oF = FEAT;
   allocMap(nw, nh);
+  FEAT = featMap(oF, 1, 1, dx, dy, nw, nh);
   H.fill(S.minH); B.fill(B_DESERT);
   for (let r = 0; r < oh; r++) {
     const nr = r + dy; if (nr < 0 || nr >= nh) continue;
@@ -2550,7 +3210,7 @@ function runGenerator(p, onProgress) {
     let worker = null;
     try {
       if (!genWorkerURL) genWorkerURL = URL.createObjectURL(new Blob([`"use strict";const G=(${genCore.toString()})();
-onmessage=(e)=>{try{const r=G.generate(e.data,(f,what)=>postMessage({p:f,what}));postMessage({done:1,h:r.h,ms:r.ms,water:r.water||null,info:r.info||null},r.water?[r.h.buffer,r.water.buffer]:[r.h.buffer]);}
+onmessage=(e)=>{try{const r=G.generate(e.data,(f,what)=>postMessage({p:f,what}));postMessage({done:1,h:r.h,ms:r.ms,water:r.water||null,info:r.info||null,feat:r.feat||null},r.water?[r.h.buffer,r.water.buffer]:[r.h.buffer]);}
 catch(err){postMessage({error:String(err&&err.message||err)});}};`], { type: "text/javascript" }));
       worker = new Worker(genWorkerURL);
     } catch (e) { worker = null; }
@@ -2560,7 +3220,7 @@ catch(err){postMessage({error:String(err&&err.message||err)});}};`], { type: "te
     worker.onmessage = (e) => {
       const m = e.data; started = true;
       if (m.error) { worker.terminate(); reject(new Error(m.error)); }
-      else if (m.done) { worker.terminate(); resolve({ h: m.h, ms: m.ms, water: m.water, info: m.info, worker: true }); }
+      else if (m.done) { worker.terminate(); resolve({ h: m.h, ms: m.ms, water: m.water, info: m.info, feat: m.feat, worker: true }); }
       else if (onProgress) onProgress(m.p, m.what);
     };
     worker.onerror = (e) => { e.preventDefault(); worker.terminate(); if (!started) fallback(); else reject(new Error(e.message || "Generator failed")); };
@@ -2594,13 +3254,54 @@ async function generateMap(p, opt) {
       }
       BE.set(B);
     }
+    // waterfalls / landmarks: replace all (or those inside the selection)
+    if (r.water) {
+      const nf = featSanitize(r.feat, S.w, S.h), keep = (q) => opt.selection && !(SEL[Math.round(q.y) * S.w + Math.round(q.x)] > 127);
+      FEAT = { falls: FEAT.falls.filter(keep).concat(nf.falls.filter((q) => !keep(q))), landmarks: FEAT.landmarks.filter(keep).concat(nf.landmarks.filter((q) => !keep(q))) };
+    } else if (!opt.selection) FEAT = { falls: [], landmarks: [] };
     markAll(); waterDirty = true;
+    if (FEAT.falls.length) refineFalls();
     const ta = performance.now();
     if (opt.auto) autoBiome({ ...autoOptsFromUI(), mode: r.water ? "climate" : $("autoMode").value, scope: opt.selection ? "selection" : "all", keepWater: r.water ? true : !!opt.selection });
-    lastGen = { total: performance.now() - t0, noise: r.ms.noise, erosion: r.ms.erosion, auto: opt.auto ? performance.now() - ta : 0, worker: r.worker, info: r.info || null };
+    lastGen = { total: performance.now() - t0, noise: r.ms.noise, erosion: r.ms.erosion, auto: opt.auto ? performance.now() - ta : 0, worker: r.worker, info: r.info || null, slope: slopeStats() };
     touched(false);
     return lastGen;
   } finally { busy(false); }
+}
+
+// Share of land (above sea level, not water) steeper than 15 degrees and than the walkable
+// limit (Max walk slope), plus the largest connected gentle area (under 8 degrees) as a
+// share of land: the readout in the generator note.
+function slopeStats() {
+  const w = S.w, h = S.h, m2 = 2 * S.mpp, t15 = Math.tan(15 * Math.PI / 180), tw = Math.tan(S.steep * Math.PI / 180), t8 = Math.tan(8 * Math.PI / 180);
+  let land = 0, s15 = 0, sw = 0;
+  const flat = new Uint8Array(w * h);
+  for (let r = 1; r < h - 1; r++) for (let c = 1; c < w - 1; c++) {
+    const i = r * w + c;
+    if (H[i] <= S.sea || IS_WATER[B[i]]) continue;
+    land++;
+    const s = Math.hypot(H[i + 1] - H[i - 1], H[i + w] - H[i - w]) / m2;
+    if (s > t15) s15++;
+    if (s > tw) sw++;
+    if (s < t8) flat[i] = 1;
+  }
+  let best = 0;
+  const stack = [];
+  for (let i0 = 0; i0 < flat.length; i0++) {
+    if (flat[i0] !== 1) continue;
+    let cnt = 0; flat[i0] = 2; stack.push(i0);
+    while (stack.length) {
+      const i = stack.pop(); cnt++;
+      const c = i % w;
+      if (c > 0 && flat[i - 1] === 1) { flat[i - 1] = 2; stack.push(i - 1); }
+      if (c < w - 1 && flat[i + 1] === 1) { flat[i + 1] = 2; stack.push(i + 1); }
+      if (i >= w && flat[i - w] === 1) { flat[i - w] = 2; stack.push(i - w); }
+      if (i + w < flat.length && flat[i + w] === 1) { flat[i + w] = 2; stack.push(i + w); }
+    }
+    best = Math.max(best, cnt);
+  }
+  const pc = (v) => land ? 100 * v / land : 0;
+  return { over15: pc(s15), overWalk: pc(sw), walk: S.steep, flatMax: pc(best) };
 }
 
 //----- 2D Map Drawing -----||
@@ -2735,6 +3436,7 @@ function drawMap() {
     mctx.moveTo(ox, oy + (mh - 0.5) * z); mctx.lineTo(ox + W, oy + (mh - 0.5) * z);
     mctx.stroke();
   }
+  drawFeatures(mctx, ox, oy, z, false);
   if (fp.on) drawPlayerMarker(mctx, ox, oy, z, true);
   const S2 = (p) => [ox + (p[0] + 0.5) * z, oy + (p[1] + 0.5) * z];
   // Ramp / river preview while dragging: the path at its real width.
@@ -2884,6 +3586,7 @@ mapCv.addEventListener("wheel", (e) => {
 const glCv = $("gl");
 const gl = glCv.getContext("webgl2", { antialias: true, powerPreference: "high-performance" });
 let prog = null, waterProg = null, skyProg = null, U = {}, WU = {}, SU = {}, gridVAO = null, gridIBO = null;
+let featProg = null, FU = {}, featVAO = null, featVBO = null, featKey = "", featSolidN = 0, featSheetN = 0;
 // Edge fog, shared by the terrain and water shaders.
 const FOG_GLSL = `
 uniform vec4 uFog;                 // fog width m (0 = off), world W m, world H m, unused
@@ -3108,10 +3811,107 @@ void main() {
 }`);
   SU = uniforms(skyProg, ["uF", "uR", "uU", "uSky", "uFogCol", "uTan"]);
 
+  // Features: plain colored triangles in world meters (waterfall sheets, landmark markers).
+  featProg = makeProgram(`#version 300 es
+in vec3 aPos;
+in vec4 aCol;
+uniform mat4 uMVP;
+out vec4 vCol;
+out vec3 vWorld;
+void main() { vCol = aCol; vWorld = aPos; gl_Position = uMVP * vec4(aPos, 1.0); }`, `#version 300 es
+precision highp float;
+${FOG_GLSL}
+in vec4 vCol;
+in vec3 vWorld;
+out vec4 fragColor;
+void main() { float f = edgeFog(vWorld); fragColor = vec4(mix(vCol.rgb, uFogCol, f), mix(vCol.a, 1.0, f)); }`);
+  FU = uniforms(featProg, ["uMVP", "uFog", "uFogCol", "uEye"]);
+  featVAO = gl.createVertexArray(); featVBO = gl.createBuffer();
+  gl.bindVertexArray(featVAO); gl.bindBuffer(gl.ARRAY_BUFFER, featVBO);
+  const aP = gl.getAttribLocation(featProg, "aPos"), aC = gl.getAttribLocation(featProg, "aCol");
+  gl.enableVertexAttribArray(aP); gl.vertexAttribPointer(aP, 3, gl.FLOAT, false, 28, 0);
+  gl.enableVertexAttribArray(aC); gl.vertexAttribPointer(aC, 4, gl.FLOAT, false, 28, 12);
+  gl.bindVertexArray(null);
+
   gridVAO = gl.createVertexArray(); gridIBO = gl.createBuffer();
   gl.enable(gl.DEPTH_TEST);
   gl.clearColor(SKY_COL[0], SKY_COL[1], SKY_COL[2], 1);
   glCv.addEventListener("webglcontextlost", (e) => { e.preventDefault(); $("info").textContent = "3D preview lost its GPU context; reload the page to get it back (your map is autosaved)."; });
+}
+
+//----- Feature Meshes (3D) -----||
+// Landmark markers are simple boxes with the sun shading baked into the colors (solid,
+// drawn with depth); waterfall sheets are see-through quads drawn after the water.
+// Rebuilt only when the features or the map frame change.
+function buildFeatMesh() {
+  const solid = [], sheet = [], mpp = S.mpp, Y = (r) => (S.h - 1 - r) * mpp;
+  const tri = (out, a, b, c, col) => { for (const p of [a, b, c]) out.push(p[0], p[1], p[2], col[0], col[1], col[2], col[3]); };
+  const quad = (out, a, b, c, d, col) => { tri(out, a, b, c, col); tri(out, a, c, d, col); };
+  // box centred at (cx, cy, cz) along unit u (length 2*a), across v (2*b), height 2*c, tilted by pitch about v
+  const box = (cx, cy, cz, ang, a, b, c, rgb, pitch = 0) => {
+    const ux = Math.cos(ang), uy = Math.sin(ang), cp = Math.cos(pitch), spt = Math.sin(pitch);
+    const U3 = [ux * cp, uy * cp, spt], V3 = [-uy, ux, 0], W3 = [-ux * spt, -uy * spt, cp];
+    const P = (i, j, k) => [cx + U3[0] * a * i + V3[0] * b * j + W3[0] * c * k, cy + U3[1] * a * i + V3[1] * b * j + W3[1] * c * k, cz + U3[2] * a * i + W3[2] * c * k];
+    const face = (n, ps) => { const l = 0.55 + 0.45 * Math.max(0, n[0] * SUN[0] + n[1] * SUN[1] + n[2] * SUN[2]); quad(solid, ...ps, [rgb[0] * l, rgb[1] * l, rgb[2] * l, 1]); };
+    const neg = (v) => v.map((x) => -x);
+    face(W3, [P(-1, -1, 1), P(1, -1, 1), P(1, 1, 1), P(-1, 1, 1)]); face(neg(W3), [P(-1, -1, -1), P(-1, 1, -1), P(1, 1, -1), P(1, -1, -1)]);
+    face(U3, [P(1, -1, -1), P(1, 1, -1), P(1, 1, 1), P(1, -1, 1)]); face(neg(U3), [P(-1, -1, -1), P(-1, -1, 1), P(-1, 1, 1), P(-1, 1, -1)]);
+    face(V3, [P(-1, 1, -1), P(-1, 1, 1), P(1, 1, 1), P(1, 1, -1)]); face(neg(V3), [P(-1, -1, -1), P(1, -1, -1), P(1, -1, 1), P(-1, -1, 1)]);
+  };
+  for (const q of FEAT.landmarks) {
+    const x = q.x * mpp, y = Y(q.y), z = q.z, a = q.rot * Math.PI / 180, ux = Math.cos(a), uy = Math.sin(a), vx = -uy, vy = ux;
+    if (q.type === "cliff_walkway") {
+      // a plank walkway out over the edge (rot points out over the drop) with rails
+      box(x + ux * 6, y + uy * 6, z + 0.15, a, 7, 1.5, 0.15, [0.55, 0.38, 0.22]);
+      for (const sd of [-1.4, 1.4]) box(x + ux * 6 + vx * sd, y + uy * 6 + vy * sd, z + 1.1, a, 7, 0.06, 0.06, [0.35, 0.24, 0.14]);
+      for (let k = 0; k <= 3; k++) for (const sd of [-1.4, 1.4]) box(x + ux * (k * 4.3 - 0.5) + vx * sd, y + uy * (k * 4.3 - 0.5) + vy * sd, z + 0.6, a, 0.08, 0.08, 0.6, [0.35, 0.24, 0.14]);
+    } else if (q.type === "rock_arch") {
+      // rot runs bank to bank across the river (z = the lower bank): a pillar on each side, a span over the water
+      for (const sd of [-8, 8]) box(x + ux * sd, y + uy * sd, z - 2, a, 1.8, 1.6, 6, [0.55, 0.5, 0.45]);
+      box(x, y, z + 4.6, a, 9.8, 1.6, 0.9, [0.6, 0.55, 0.5]);
+    } else if (q.type === "crashed_wreck") {
+      // a broken hull nosed into the ground, and its tail section
+      box(x, y, z + 1.2, a, 6, 2, 1.4, [0.62, 0.3, 0.2], -0.18);
+      box(x - ux * 9, y - uy * 9, z + 0.8, a + 0.5, 3, 1.6, 1.1, [0.5, 0.26, 0.18], 0.1);
+      box(x - ux * 9 + vx * 2.2, y - uy * 9 + vy * 2.2, z + 2.6, a + 0.5, 1.6, 0.15, 1.3, [0.45, 0.45, 0.47]);
+    } else {
+      // a raised steel deck on four legs
+      for (const [i, j] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) box(x + ux * 3.4 * i + vx * 3.4 * j, y + uy * 3.4 * i + vy * 3.4 * j, z + 3, a, 0.3, 0.3, 3, [0.5, 0.52, 0.55]);
+      box(x, y, z + 6.2, a, 4.2, 4.2, 0.25, [0.62, 0.64, 0.68]);
+    }
+  }
+  for (const q of FEAT.falls) {
+    // the sheet hangs from the lip across the flow, leaning out a little downstream
+    const x = q.x * mpp, y = Y(q.y), a = q.dir * Math.PI / 180, ux = Math.cos(a), uy = Math.sin(a), vx = -uy, vy = ux;
+    const hw = Math.max(1, q.width / 2), top = q.top, bot = Math.min(q.bottom, top - 0.5), out = Math.min(3, 0.12 * (top - bot));
+    for (const [off, al] of [[0.15, 0.55], [0.6, 0.35]]) {
+      const ox = ux * off, oy = uy * off;
+      quad(sheet, [x + ox - vx * hw, y + oy - vy * hw, top], [x + ox + vx * hw, y + oy + vy * hw, top],
+        [x + ox + ux * out + vx * hw * 1.1, y + oy + uy * out + vy * hw * 1.1, bot], [x + ox + ux * out - vx * hw * 1.1, y + oy + uy * out - vy * hw * 1.1, bot], [0.85, 0.93, 1, al]);
+    }
+    // foam on the plunge pool
+    const fx = x + ux * (out + 1), fy = y + uy * (out + 1), r = hw * 1.5;
+    quad(sheet, [fx - ux * r - vx * r, fy - uy * r - vy * r, bot + 0.08], [fx + ux * r - vx * r, fy + uy * r - vy * r, bot + 0.08],
+      [fx + ux * r + vx * r, fy + uy * r + vy * r, bot + 0.08], [fx - ux * r + vx * r, fy - uy * r + vy * r, bot + 0.08], [1, 1, 1, 0.35]);
+  }
+  featSolidN = solid.length / 7; featSheetN = sheet.length / 7;
+  gl.bindBuffer(gl.ARRAY_BUFFER, featVBO);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(solid.concat(sheet)), gl.STATIC_DRAW);
+}
+function drawFeat3D(mvp, fog, view, sheets) {
+  if (!featProg || (!FEAT.falls.length && !FEAT.landmarks.length)) return;
+  const key = S.w + "," + S.h + "," + S.mpp + JSON.stringify(FEAT);
+  if (key !== featKey) { featKey = key; buildFeatMesh(); }
+  const first = sheets ? featSolidN : 0, n = sheets ? featSheetN : featSolidN;
+  if (!n) return;
+  gl.useProgram(featProg);
+  gl.uniformMatrix4fv(FU.uMVP, false, mvp);
+  gl.uniform4fv(FU.uFog, fog); gl.uniform3fv(FU.uFogCol, FOG_COL); gl.uniform3fv(FU.uEye, view.eye);
+  gl.bindVertexArray(featVAO);
+  if (sheets) { gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false); gl.disable(gl.CULL_FACE); }
+  gl.drawArrays(gl.TRIANGLES, first, n);
+  if (sheets) { gl.depthMask(true); gl.disable(gl.BLEND); }
+  gl.bindVertexArray(null);
 }
 
 //----- Terrain Grid (preview) -----||
@@ -3595,6 +4395,7 @@ function drawFPMini() {
   const z = Math.min(cw / S.w, ch / S.h), ox = (cw - S.w * z) / 2, oy = (ch - S.h * z) / 2;
   ctx.imageSmoothingEnabled = true;
   ctx.drawImage(off, ox, oy, S.w * z, S.h * z);
+  drawFeatures(ctx, ox, oy, z, true);
   drawPlayerMarker(ctx, ox, oy, z, false);
 }
 
@@ -4020,6 +4821,10 @@ function importCore() {
     }
     if (!decls.length) throw new Error("No terrain data arrays (<name>_height / _biome or _packed) in this header");
     prefix = (decls.find((d) => d.kind === "height" || d.kind === "packed") || decls[0]).prefix;
+    // Head = everything before this prefix's first data array (a helper table such as
+    // terrain_biome_is_water[] may come earlier and must not cut the head short).
+    const own = decls.find((d) => d.prefix === prefix);
+    if (own) firstData = text.lastIndexOf(own.type, own.at);
     const head = text.slice(0, firstData);
     // Constants
     const K = {}, kRe = /static\s+const\s+(?:unsigned\s+)?(?:int|float|double|long|uint\d+_t|int\d+_t)\s+(\w+)\s*=\s*([^;]+);/g;
@@ -4060,8 +4865,21 @@ function importCore() {
     let range = kOf("max_height");
     if (!(range > 0) && kOf("height_scale") > 0) range = kOf("height_scale") * maxQ;
     if (!(range > 0)) throw new Error("Missing " + prefix + "_max_height");
+    // Features (optional, newer exports): float rows in the head, z already in world meters
+    const rows = (nm, per, cnt) => {
+      const mm = new RegExp(nm + "\\s*\\[[^\\]]*\\]\\s*\\[\\s*" + per + "\\s*\\]\\s*=\\s*\\{([\\s\\S]*?)\\};").exec(head);
+      if (!mm || !(cnt > 0)) return [];
+      const out = [], body = mm[1].replace(/\/\/[^\n]*/g, "");
+      for (const r of body.matchAll(/\{([^{}]*)\}/g)) {
+        const v = r[1].split(",").map((x) => parseFloat(x.trim().replace(/f$/i, ""))).filter((x) => Number.isFinite(x));
+        if (v.length === per) out.push(v);
+        if (out.length >= cnt) break;
+      }
+      return out;
+    };
+    const features = { zAbs: true, falls: rows(prefix + "_falls", 6, kOf("fall_count") | 0), landmarks: rows(prefix + "_landmarks", 5, kOf("landmark_count") | 0) };
     return {
-      kind: "h", name: prefix, w, h, fmt, maxQ, q, b, water,
+      kind: "h", name: prefix, w, h, fmt, maxQ, q, b, water, features,
       mpp: kOf("meters_per_px"), range, offset: Number.isFinite(kOf("height_offset")) ? kOf("height_offset") : null,
       sea: kOf("sea_level"), chunk: kOf("chunk_cells") | 0,
       names: names.length ? names : strNames, nb,
@@ -4101,10 +4919,24 @@ function importCore() {
       water = new Uint16Array(n);
       if (wB === 1) water.set(u8.subarray(waterAt, waterAt + n)); else for (let i = 0; i < n; i++) water[i] = dv.getUint16(waterAt + i * 2, true);
     }
+    // features section (flags bit 1): right after the water grid, starts with "TMFT"
+    let features = null;
+    if (ver === 2 && (flags & 2) && waterAt) {
+      const at = waterAt + n * (fmtId === 1 ? 1 : 2);
+      if (u8.length >= at + 16 && u8[at] === 84 && u8[at + 1] === 77 && u8[at + 2] === 70 && u8[at + 3] === 84 && U(at + 4) >= 1) {
+        const nf = U(at + 8), nl = U(at + 12);
+        if (nf <= 100000 && nl <= 100000 && u8.length >= at + 16 + nf * 24 + nl * 20) {
+          features = { zAbs: false, falls: [], landmarks: [] };
+          let o = at + 16;
+          for (let k = 0; k < nf; k++, o += 24) { const a = []; for (let j = 0; j < 6; j++) a.push(F(o + j * 4)); features.falls.push(a); }
+          for (let k = 0; k < nl; k++, o += 20) features.landmarks.push([U(o), F(o + 4), F(o + 8), F(o + 12), F(o + 16)]);
+        }
+      }
+    }
     // float32 fields back to the short decimal they were written from (200, not 200.0000031)
     const dec = (f) => { for (let p = 1; p <= 9; p++) { const v = parseFloat(f.toPrecision(p)); if (Math.fround(v) === f) return v; } return f; };
     const range = dec(F(36) > 0 ? F(36) : F(40) * maxQ);
-    return { kind: "bin", binVersion: ver, w, h, fmt, maxQ, q, b, water, mpp: dec(F(32)), range, offset: null, sea: dec(F(44)), chunk: C, names, nb, version: "v" + ver + (names ? "" : ", " + nb + " biomes") };
+    return { kind: "bin", binVersion: ver, w, h, fmt, maxQ, q, b, water, features, mpp: dec(F(32)), range, offset: null, sea: dec(F(44)), chunk: C, names, nb, version: "v" + ver + (names ? "" : ", " + nb + " biomes") };
   }
   return { parseH, parseBin, evalExpr };
 }
@@ -4222,6 +5054,14 @@ function applyImported(r, fileName) {
       B[i] = v; P[i] = IS_WATER[v] && v !== B_OCEAN ? 1 : 0;
     }
     BE.set(B);
+    // Features (world meters) back to pixels; allocMap cleared the old ones
+    if (r.features) {
+      const mpp = S.mpp, zo = r.features.zAbs ? 0 : minH, px = (x) => x / mpp, py = (y) => S.h - 1 - y / mpp;
+      FEAT = featSanitize({
+        falls: r.features.falls.map((a) => ({ x: px(a[0]), y: py(a[1]), top: a[2] + zo, bottom: a[3] + zo, dir: a[4], width: a[5] })),
+        landmarks: r.features.landmarks.map((a) => ({ type: LANDMARK_TYPES[a[0] | 0], x: px(a[1]), y: py(a[2]), z: a[3] + zo, rot: a[4] })),
+      }, S.w, S.h);
+    }
     // Water check: recompute and compare with the file's grid (same steps).
     computeWater();
     let wInfo = null;
@@ -4239,8 +5079,9 @@ function applyImported(r, fileName) {
       const o = document.createElement("option"); o.textContent = String(S.chunk); $("setChunk").appendChild(o);
     }
     syncSettingsUI(); touched(true);
-    lastImport = { file: fileName, kind: r.kind, version: r.version, fmt: r.fmt, w: r.w, h: r.h, ms: r.ms, unknownIds: bad, remapped: changed, water: wInfo };
+    lastImport = { file: fileName, kind: r.kind, version: r.version, fmt: r.fmt, w: r.w, h: r.h, ms: r.ms, unknownIds: bad, remapped: changed, water: wInfo, falls: FEAT.falls.length, landmarks: FEAT.landmarks.length };
     const msg = [`Imported ${fileName}: ${r.w}×${r.h}, ${EXPORT_FORMATS[r.fmt].label}`];
+    if (FEAT.falls.length || FEAT.landmarks.length) msg.push(`${FEAT.falls.length} waterfalls, ${FEAT.landmarks.length} landmarks`);
     if (r.fmt === "8") msg.push(`8-bit heights are ${fmtM(k)} steps: smooth before sculpting fine detail`);
     if (changed) msg.push(`Older biome list (${r.names ? r.names.length : r.nb}) converted to the current biomes`);
     if (bad) msg.push(`${fmtInt(bad)} px had unknown biome ids (now Plains)`);
@@ -4304,6 +5145,46 @@ function packedGrid() {
   return out;
 }
 
+// Waterfalls + landmarks in world meters (same frame as the grid). Always written, so a
+// game can rely on the names; with none the arrays hold one zero row and the count is 0.
+function featWorld() {
+  const mpp = S.mpp, Y = (r) => (S.h - 1 - r) * mpp;
+  return {
+    falls: FEAT.falls.map((q) => [q.x * mpp, Y(q.y), q.top, q.bottom, q.dir, q.width]),
+    landmarks: FEAT.landmarks.map((q) => [LANDMARK_TYPES.indexOf(q.type), q.x * mpp, Y(q.y), q.z, q.rot]),
+  };
+}
+function hFeatures(L, name) {
+  const fw = featWorld(), row = (a) => `    { ${a.map((v) => ff(+(+v).toFixed(3))).join(", ")} },`;
+  L.push(`//----- Features -----||`);
+  L.push(`// Waterfalls and landmarks placed by the world generator, in world meters: x, y as for the`);
+  L.push(`// grid above, z is world z (height_offset included). Angles are degrees counter-clockwise`);
+  L.push(`// from +x (east): 90 = north.`);
+  L.push(`//   ${name}_falls[k]     = { x, y, top, bottom, dir, width }`);
+  L.push(`//     top / bottom: water surface above and below the drop; dir: downstream; width: m.`);
+  L.push(`//     The river surface steps down here (never up); a plunge pool sits at the foot.`);
+  L.push(`//   ${name}_landmarks[k] = { type, x, y, z, rot }`);
+  L.push(`//     type: TerrainLandmark id (as float); z: the flattened pad it stands on; rot: facing`);
+  L.push(`//     (walkway: out over the drop; arch: bank to bank across the river; platform: the view).`);
+  L.push(`// Each landmark has a graded approach ramp. With no entries the array holds one zero row.`);
+  L.push(`#ifndef TERRAIN_LANDMARKS_V1_DEFINED`);
+  L.push(`#define TERRAIN_LANDMARKS_V1_DEFINED`);
+  L.push(`enum TerrainLandmark : uint8_t {`);
+  LANDMARK_TYPES.forEach((t, k) => L.push(`    LANDMARK_${t.toUpperCase()} = ${k},`));
+  L.push(`    LANDMARK_COUNT = ${LANDMARK_TYPES.length}`);
+  L.push(`};`);
+  L.push(`static const char* const terrain_landmark_name[LANDMARK_COUNT] = { ${LANDMARK_TYPES.map((t) => JSON.stringify(t)).join(", ")} };`);
+  L.push(`#endif`);
+  L.push(`static const int   ${name}_fall_count = ${fw.falls.length};`);
+  L.push(`static const float ${name}_falls[${Math.max(1, fw.falls.length)}][6] = {`);
+  (fw.falls.length ? fw.falls : [[0, 0, 0, 0, 0, 0]]).forEach((a) => L.push(row(a)));
+  L.push(`};`);
+  L.push(`static const int   ${name}_landmark_count = ${fw.landmarks.length};`);
+  L.push(`static const float ${name}_landmarks[${Math.max(1, fw.landmarks.length)}][5] = {`);
+  (fw.landmarks.length ? fw.landmarks : [[0, 0, 0, 0, 0]]).forEach((a) => L.push(row(a)));
+  L.push(`};`);
+  L.push(``);
+}
 function buildExport(fmt) {
   const F = EXPORT_FORMATS[fmt] || EXPORT_FORMATS["16"];
   if (waterDirty) computeWater();      // also settles the automatic ocean (BE)
@@ -4397,6 +5278,7 @@ function buildExport(fmt) {
   L.push(`#define TERRAIN_KEY_MIN_BRIGHTNESS ${ff(VMIN)}   // old one-image maps only: brightness of height 0`);
   L.push(`#endif`);
   L.push(``);
+  hFeatures(L, name);
   L.push(`//----- Data -----||`);
   const grid = (type, ident, arr, per) => {
     L.push(`static const ${type} ${ident}[${w} * ${h}] = {`);
@@ -4422,7 +5304,9 @@ function buildBin(fmt) {
   const F = EXPORT_FORMATS[fmt] || EXPORT_FORMATS["16"], d = statsData(), n = S.w * S.h;
   const wq = waterGrid(F.maxQ), wBytes = F.maxQ > 255 ? 2 : 1;
   const tableAt = 64, dataAt = tableAt + BIOMES.length * BIN_BIOME_BYTES, waterAt = dataAt + n * F.bytes;
-  const out = new ArrayBuffer(waterAt + n * wBytes), dv = new DataView(out), u8 = new Uint8Array(out);
+  // optional features section after the water grid (flags bit 1): see the README
+  const fw = featWorld(), featAt = waterAt + n * wBytes, featBytes = fw.falls.length || fw.landmarks.length ? 16 + fw.falls.length * 24 + fw.landmarks.length * 20 : 0;
+  const out = new ArrayBuffer(featAt + featBytes), dv = new DataView(out), u8 = new Uint8Array(out);
   [84, 77, 65, 80].forEach((c, k) => dv.setUint8(k, c));          // "TMAP"
   dv.setUint32(4, BIN_VERSION, true);
   dv.setUint32(8, S.w, true); dv.setUint32(12, S.h, true);
@@ -4433,7 +5317,7 @@ function buildBin(fmt) {
   dv.setFloat32(32, S.mpp, true); dv.setFloat32(36, S.maxH - S.minH, true);
   dv.setFloat32(40, (S.maxH - S.minH) / F.maxQ, true); dv.setFloat32(44, S.sea - S.minH, true);
   dv.setUint32(48, BIOMES.length, true);
-  dv.setUint32(52, 1, true);                                        // flags: bit 0 = water grid present
+  dv.setUint32(52, featBytes ? 3 : 1, true);                        // flags: bit 0 = water grid, bit 1 = features section
   dv.setUint32(56, dataAt, true);                                   // offset of the grid data
   dv.setUint32(60, waterAt, true);                                  // offset of the water grid
   BIOMES.forEach((b, k) => {                                        // biome table
@@ -4448,6 +5332,14 @@ function buildBin(fmt) {
   else if (fmt === "8") { u8.set(quantHeights(255), dataAt); u8.set(BE, dataAt + n); }
   else { putU16(quantHeights(65535), dataAt); u8.set(BE, dataAt + n * 2); }
   if (wBytes === 2) putU16(wq, waterAt); else u8.set(wq, waterAt);
+  if (featBytes) {
+    // "TMFT", u32 version 1, u32 falls, u32 landmarks, then the records (z over Min height like the grid)
+    [84, 77, 70, 84].forEach((c, k) => dv.setUint8(featAt + k, c));
+    dv.setUint32(featAt + 4, 1, true); dv.setUint32(featAt + 8, fw.falls.length, true); dv.setUint32(featAt + 12, fw.landmarks.length, true);
+    let o = featAt + 16;
+    for (const a of fw.falls) { a.forEach((v, j) => dv.setFloat32(o + j * 4, j === 2 || j === 3 ? v - S.minH : v, true)); o += 24; }
+    for (const a of fw.landmarks) { dv.setUint32(o, a[0], true); for (let j = 1; j < 5; j++) dv.setFloat32(o + j * 4, j === 3 ? a[j] - S.minH : a[j], true); o += 20; }
+  }
   return u8;
 }
 
@@ -4740,10 +5632,12 @@ $("setFog").addEventListener("change", (e) => { S.fog = e.target.checked; syncFo
 
 //----- Generate + Auto Biome UI -----||
 const GEN_PRESET_NAMES = {
-  world: [["island", "Island: sea all round, 2 ranges"], ["archipelago", "Archipelago: a main island and smaller ones"], ["continent", "Continent: coast on one side, 3 ranges"], ["highlands", "Highlands: all land, plateaus and high ranges"]],
+  world: [["traversable", "Traversable: island, massifs, tiers, falls, landmarks"], ["island", "Island: sea all round, 2 ranges"], ["archipelago", "Archipelago: a main island and smaller ones"], ["continent", "Continent: coast on one side, 3 ranges"], ["highlands", "Highlands: all land, plateaus and high ranges"]],
   classic: [["island", "Island: sea all round, mountains inland"], ["continent", "Continent / inland: mostly land, bays and lakes"], ["mountains", "Mountains & valleys: ranges, deep valleys"], ["hills", "Rolling hills: gentle, open land"]],
 };
-const GEN_W_SLIDERS = [["genRanges", "ranges", 0], ["genMountH", "mountH", 2], ["genRough", "rough", 2], ["genOutc", "outcrops", 2], ["genWErosion", "erosion", 2], ["genRivers", "rivers", 0], ["genLakes", "lakes", 0]];
+const GEN_W_SLIDERS = [["genRanges", "ranges", 0], ["genMountH", "mountH", 2], ["genRough", "rough", 2], ["genOutc", "outcrops", 2], ["genWErosion", "erosion", 2], ["genRivers", "rivers", 0], ["genLakes", "lakes", 0],
+  ["genTiers", "tiers", 2], ["genTierH", "tierH", 1], ["genCliffs", "cliffs", 2], ["genTSlope", "targetSlope", 0], ["genMinor", "minor", 0], ["genWindy", "wind", 2],
+  ["genSourceH", "sourceH", 2], ["genFalls", "falls", 0], ["genMarks", "landmarks", 0]];
 function genFillPresets() {
   const t = $("genType").value, sel = $("genPreset"), keep = sel.value;
   sel.innerHTML = "";
@@ -4756,13 +5650,28 @@ function genFillPresets() {
 function genPresetDefaults() {
   if ($("genType").value === "world") {
     const P = GEN.WORLD_PRESETS[$("genPreset").value] || GEN.WORLD_PRESETS.island;
-    for (const [id, k] of GEN_W_SLIDERS) $(id).value = P[k];
-    $("genJitter").checked = true;
+    for (const [id, k] of GEN_W_SLIDERS) $(id).value = P[k] ?? 0;
+    $("genJitter").checked = true; $("genMStyle").value = P.mountStyle || "ridge"; $("genMeadow").checked = !!P.meadow;
   } else {
     const P = GEN.PRESETS[$("genPreset").value] || GEN.PRESETS.island;
     $("genSize").value = 1; $("genMount").value = P.mount; $("genWarp").value = P.warp; $("genErosion").value = P.erosion; $("genEdge").value = "";
   }
   syncGenUI();
+}
+// counts of the traversable-world features, when the run made any
+function genFeatNote(I) {
+  const q = [];
+  if (I.high) q.push(`${I.high} from high ground`);
+  if (I.falls) q.push(`${I.falls} waterfalls`);
+  if (I.landmarks) q.push(`${I.landmarks} landmarks`);
+  if (I.cliffBands) q.push(`${I.cliffBands} cliff bands`);
+  if (I.minor) q.push(`${I.minor} small features`);
+  return q.length ? ", " + q.join(", ") : "";
+}
+// slope readout: share of land steeper than 15° and than the walkable limit, largest flat area
+function genSlopeNote(st) {
+  if (!st) return "";
+  return `Land over 15°: ${st.over15.toFixed(1)}%, over the walkable ${st.walk}°: ${st.overWalk.toFixed(1)}%, largest flat area: ${st.flatMax.toFixed(1)}% of land. `;
 }
 function syncGenUI() {
   $("genSizeV").textContent = (+$("genSize").value).toFixed(2) + "×";
@@ -4773,10 +5682,11 @@ function syncGenUI() {
   const sel = selectionCount();
   $("genSel").disabled = !sel;
   if (!sel) $("genSel").checked = false;
-  $("genNote").textContent = (lastGen ? `Last run: ${(lastGen.total / 1000).toFixed(1)} s (shape ${(lastGen.noise / 1000).toFixed(1)} s, erosion ${(lastGen.erosion / 1000).toFixed(1)} s${lastGen.auto ? `, biomes ${(lastGen.auto / 1000).toFixed(1)} s` : ""}${lastGen.worker ? ", in the background" : ""})${lastGen.info ? `: ${lastGen.info.ranges} ranges, ${lastGen.info.passes} passes, ${lastGen.info.rivers} rivers, ${lastGen.info.lakes} lakes` : ""}. ` : "") +
+  $("genNote").textContent = (lastGen ? `Last run: ${(lastGen.total / 1000).toFixed(1)} s (shape ${(lastGen.noise / 1000).toFixed(1)} s, erosion ${(lastGen.erosion / 1000).toFixed(1)} s${lastGen.auto ? `, biomes ${(lastGen.auto / 1000).toFixed(1)} s` : ""}${lastGen.worker ? ", in the background" : ""})${lastGen.info ? `: ${lastGen.info.ranges} ranges, ${lastGen.info.passes} passes, ${lastGen.info.rivers} rivers, ${lastGen.info.lakes} lakes${genFeatNote(lastGen.info)}` : ""}. ${genSlopeNote(lastGen.slope)}` : "") +
     (sel ? `Selection: ${fmtInt(sel)} px. "Only in selection" blends the new terrain into it (soft edges blend).` : "Paint a selection (M) to regenerate just part of the map.");
 }
 for (const id of ["genSize", "genMount", "genWarp", "genErosion", ...GEN_W_SLIDERS.map((q) => q[0])]) $(id).addEventListener("input", syncGenUI);
+$("genMStyle").addEventListener("change", syncGenUI);
 $("genType").addEventListener("change", () => { genFillPresets(); genPresetDefaults(); });
 $("genPreset").addEventListener("change", genPresetDefaults);
 $("genDefaults").addEventListener("click", genPresetDefaults);
@@ -4791,7 +5701,7 @@ $("genRand").addEventListener("click", () => { $("genSeed").value = Math.floor(M
 function genParamsFromUI() {
   const seed = parseInt($("genSeed").value, 10) || 0;
   if ($("genType").value === "world") {
-    const p = { gen: "world", seed, preset: $("genPreset").value, jitter: $("genJitter").checked };
+    const p = { gen: "world", seed, preset: $("genPreset").value, jitter: $("genJitter").checked, mountStyle: $("genMStyle").value, meadow: $("genMeadow").checked ? 1 : 0 };
     for (const [id, k] of GEN_W_SLIDERS) p[k] = +$(id).value;
     return p;
   }
@@ -5006,6 +5916,8 @@ function drawGL(timed) {
   gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, texB);
   gl.bindVertexArray(gridVAO);
   gl.drawElementsInstanced(gl.TRIANGLES, tile.count, gl.UNSIGNED_SHORT, 0, tile.nx * tile.ny);
+  drawFeat3D(mvp, fog, view, false);
+  gl.bindVertexArray(gridVAO);
   if (S.water) {
     // See-through water drawn last; no depth writes so it never hides the bed.
     gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false);
@@ -5020,6 +5932,7 @@ function drawGL(timed) {
     gl.drawElementsInstanced(gl.TRIANGLES, tile.count, gl.UNSIGNED_SHORT, 0, tile.nx * tile.ny);
     gl.activeTexture(gl.TEXTURE0);
     gl.depthMask(true); gl.disable(gl.BLEND);
+    drawFeat3D(mvp, fog, view, true);
   }
   gl.bindVertexArray(null);
   if (timed) {
@@ -5058,7 +5971,7 @@ function drawGL(timed) {
     allocMap(S.w, S.h);
     H.fill(S.sea - 5); B.fill(B_DESERT);
     $("genSeed").value = 7;
-    try { await generateMap({ gen: "world", seed: 7, preset: "island" }, { auto: true }); }
+    try { await generateMap({ gen: "world", seed: 7, preset: "traversable" }, { auto: true }); }
     catch (e) { toast("Could not generate the starting island: " + (e.message || e)); }
     undoStack.length = 0; redoStack.length = 0;
   }

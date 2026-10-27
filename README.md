@@ -111,14 +111,41 @@ New maps use the **World** generator. It builds the land in layers, the way real
 
 | Preset | Look |
 |---|---|
-| Island | Sea all round, 2 ranges (the default map is Island, seed 7) |
+| Traversable | An island built to be walked: flat-topped massifs with cliff walls and ramps, stepped tiers, a wide meadow, winding rivers from the high ground with waterfalls, and landmarks (the default map is Traversable, seed 7) |
+| Island | Sea all round, 2 ranges |
 | Archipelago | A main island with a range, and several smaller islands |
 | Continent | Coast on one side, 3 ranges, inland lakes |
 | Highlands | All land: plateaus and high ranges with snow |
 
 Sliders: **Mountain ranges** (count), **Mountain height**, **Roughness** (hills), **Rock outcrops / small cliffs**, **Erosion**, **Rivers**, **Lakes**, **Rough facets on cliffs**, plus the climate settings for Auto biome.
 
-It runs in a Web Worker with a progress bar. At 1025 × 1025 it takes about 3–6 s (Archipelago 2.8 s, Island 4.2 s, Continent 5.3 s, Highlands 5.8 s, of which climate biomes are about 0.5 s) in a headless test browser; a desktop is usually faster.
+#### Traversable world
+
+The **Traversable world** section of the Generate dialog holds the settings the Traversable preset turns on. The other presets have them all off, so they make the same maps as before.
+
+| Setting | Traversable | Off | What it does |
+|---|---|---|---|
+| Mountain style | Massifs | Ridges | Massifs have flat tops, cliff walls on some sides and walkable ramps on the others |
+| Tiers | 0.8 | 0 | Strength of the stepped shelves on open land |
+| Tier height | 4 m | | Height of one step |
+| Cliffs | 0.5 | 0 | Share of massif sides and tier edges that stay as cliff bands |
+| Max open-land slope | 15° | 0 (off) | After erosion, land outside the cliff bands, rivers and lakes is relaxed and capped at this slope |
+| Small features | 12 | 0 | Minor ridges, small tier clusters and narrow valleys |
+| Winding | 0.7 | 0 | How much rivers meander and ridgelines bend |
+| River sources from high ground | 0.5 | 0 | Rivers start above this share of the land height and run down to the sea or a lake |
+| Waterfalls | 4 | 0 | Where a river crosses a cliff band or tier edge it drops in one step into a plunge pool. The water surface never rises downstream |
+| Landmarks | 5 | 0 | Cliff walkways, rock arches, crashed wrecks and stranded platforms, each on a flattened pad with a graded ramp |
+| Wide flat meadow | on | off | Keeps one wide flat or gently rolling area free of ranges and cliffs |
+
+![Traversable, seed 7: the 2D map with waterfall and landmark icons, and the 3D view](screenshot_traversable.png)
+
+![First person at a waterfall](screenshot_traversable_fp_fall.png)
+
+Waterfalls and landmarks show as icons on the 2D map and as simple shapes in the 3D view (water sheets, decks, arches, hulls, platforms). They are saved with the project, kept by undo, and written to the exports (see below). The note under the generator shows their counts and the share of land over 15° and over the steep-slope limit.
+
+In tests (seeds 1–10, 1025 × 1025 @ 2 m), Traversable has 7–11 % of its land over 15° (29–41 % with the slope cap off), the largest flat area is 6–14 % of the land, and the rivers have a sinuosity of 1.7–2.8.
+
+It runs in a Web Worker with a progress bar. At 1025 × 1025 it takes about 3–6 s (Archipelago 2.8 s, Island 3.4–3.9 s, Traversable 4.6–5.5 s, Continent 5.3 s, Highlands 5.8 s, of which climate biomes are about 0.5 s) in a headless test browser; a desktop is usually faster.
 
 ### Classic generator
 
@@ -161,6 +188,7 @@ Use **File → Import .h / .bin** or **Open**, or drop the file anywhere on the 
 What comes back:
 - Size, m/px, height range, sea level and chunk cells.
 - The heights, in meters: `z = v × range / maxQ + Min height`.
+- Waterfalls and landmarks, if the file has them. Older files without them still import.
 - The biomes. They are matched by name from the file's `enum TerrainBiome` / name table where possible, otherwise by id. Ids the app does not know become Plains (the toast says how many).
 
 Notes:
@@ -317,6 +345,11 @@ At 8-bit (0.78 m steps over 0 to 200 m), shallow water can round away: the 0.25 
   - Separate formats have `name_height[w*h]` (`uint16_t` or `uint8_t`) and `name_biome[w*h]` (`uint8_t`).
   - Packed has `name_packed[w*h]` (`uint16_t`).
   - All formats have `name_water[w*h]`, the same type as the height.
+- **Features** (before the data):
+  - `enum TerrainLandmark` (behind the `TERRAIN_LANDMARKS_V1_DEFINED` guard): `LANDMARK_CLIFF_WALKWAY = 0`, `LANDMARK_ROCK_ARCH`, `LANDMARK_CRASHED_WRECK`, `LANDMARK_STRANDED_PLATFORM`, `LANDMARK_COUNT`, and `terrain_landmark_name`
+  - `name_fall_count` and `float name_falls[N][6]`: `{ x, y, top, bottom, dir, width }`. x and y are world meters, top and bottom are the water surfaces above and below the drop in world z, dir is the downstream direction in degrees counter-clockwise from east (+x), and width is in meters.
+  - `name_landmark_count` and `float name_landmarks[M][5]`: `{ type, x, y, z, rot }`. type is a `TerrainLandmark` id, z is the world z of the flat pad, and rot is the facing in degrees counter-clockwise from east.
+  - With no entries, the array has one zero row; use the count.
 
 A 2000 × 2000 map makes a header of about 30 to 47 MB. It compiles, but for big maps `.bin` is the easier choice.
 
@@ -337,12 +370,13 @@ A 2000 × 2000 map makes a header of about 30 to 47 MB. It compiles, but for big
 | 40 | f32 | height_scale (meters per height or water step) |
 | 44 | f32 | sea_level (above Min height) |
 | 48 | u32 | biome count (N) |
-| 52 | u32 | flags: bit 0 = water grid present |
+| 52 | u32 | flags: bit 0 = water grid present, bit 1 = features section present |
 | 56 | u32 | data offset (`64 + 32*N`) |
 | 60 | u32 | water grid offset |
 | 64 | 32 B × N | biome table, see below |
 | data offset | | format 0: `u16 height[w*h]` then `u8 biome[w*h]`. Format 1: `u8 height[w*h]` then `u8 biome[w*h]`. Format 2: `u16 packed[w*h]`. |
 | water offset | | `u16 water[w*h]` (formats 0 and 2) or `u8 water[w*h]` (format 1) |
+| after the water | | features section, if flags bit 1 is set (see below) |
 
 Each biome table entry is 32 bytes:
 
@@ -355,7 +389,20 @@ Each biome table entry is 32 bytes:
 | 8-11 | water rgba (alpha 0..255) |
 | 12-31 | name, NUL padded |
 
-So the file size is `64 + 32*N + w*h*5` for format 0, `64 + 32*N + w*h*3` for format 1, and `64 + 32*N + w*h*4` for format 2.
+So the file size is `64 + 32*N + w*h*5` for format 0, `64 + 32*N + w*h*3` for format 1, and `64 + 32*N + w*h*4` for format 2, plus the features section if there is one.
+
+The features section starts right after the water grid:
+
+| Bytes | Type | Field |
+|---|---|---|
+| 0 | char[4] | `"TMFT"` |
+| 4 | u32 | version (1) |
+| 8 | u32 | waterfall count (F) |
+| 12 | u32 | landmark count (L) |
+| 16 | 24 B × F | waterfalls: f32 x, y, top, bottom, dir, width |
+| then | 20 B × L | landmarks: u32 type, then f32 x, y, z, rot |
+
+These use the same units as the `.h` arrays, except top, bottom and z are above the Min height (like `sea_level`), because the `.bin` has no `height_offset`.
 
 Version 1 files (before water) had no table and the data at 64. Read the offsets from the header rather than hard-coding them.
 
