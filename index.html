@@ -579,7 +579,7 @@ const $ = (id) => document.getElementById(id);
 const BIOMES = [
   { name: "Ocean",  key: [ 30,  70, 255], game: [ 58,  86, 120], water: true, wcol: [ 28,  78, 190, 0.62] },
   { name: "Lake",   key: [ 60, 160, 255], game: [ 76,  98, 110], water: true, wcol: [ 40, 115, 215, 0.70] },
-  { name: "River",  key: [  0, 230, 255], game: [ 98, 104,  96], water: true, wcol: [ 40, 115, 215, 0.70] },
+  { name: "River",  key: [  0, 230, 255], game: [ 76,  98, 110], water: true, wcol: [ 40, 115, 215, 0.70] },
   { name: "Pond",   key: [  0, 255, 190], game: [ 74,  90,  64], water: true, wcol: [ 50, 140, 160, 0.65] },
   { name: "Swamp",  key: [150, 170,  60], game: [ 78,  92,  52], water: true, wcol: [ 90, 110,  60, 0.45] },
   { name: "Desert", key: [255, 225, 120], game: [226, 200, 130] },
@@ -2627,7 +2627,7 @@ function renderRect(x0, y0, x1, y1) {
         R = R * (1 - op) + k[0] * shade * op; G = G * (1 - op) + k[1] * shade * op; Bc = Bc * (1 - op) + k[2] * shade * op;
       }
       if (wsOK && WS[i] > h) {
-        const d = WS[i] - h, wc = WATER_RGB[IS_WATER[BE[i]] ? BE[i] : B_OCEAN], m = biomeView ? clamp(0.55 + d * 0.04, 0.55, 0.9) * (0.4 + 0.6 * op) : 0.5;
+        const d = BE[i] === B_RIVER ? Math.max(WS[i] - h, 8) : WS[i] - h, wc = WATER_RGB[IS_WATER[BE[i]] ? BE[i] : B_OCEAN], m = biomeView ? clamp(0.55 + d * 0.04, 0.55, 0.9) * (0.4 + 0.6 * op) : 0.5;
         R = R * (1 - m) + wc[0] * m; G = G * (1 - m) + wc[1] * m; Bc = Bc * (1 - m) + wc[2] * m;
       }
       if (slv && !(wsOK && WS[i] > h)) {
