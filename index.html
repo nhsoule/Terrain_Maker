@@ -591,6 +591,10 @@ const BIOMES = [
 const B_OCEAN = 0, B_LAKE = 1, B_RIVER = 2, B_POND = 3, B_SWAMP = 4, B_DESERT = 5, B_SNOW = 6,
       B_PLAINS = 7, B_ROCK = 8, B_FOREST = 9;
 const IS_WATER = BIOMES.map((b) => !!b.water);
+// Preview only: how open water looks on screen. Lakes and rivers are drawn with the sea's
+// surface and bed colors, so all open water reads as one water (the exported tables above
+// keep their own values).
+const WATER_LOOK = BIOMES.map((b, k) => k === B_LAKE || k === B_RIVER ? BIOMES[B_OCEAN] : b);
 
 // Maps from older versions (one color image: hue = biome, brightness = height) are split
 // into the two layers on load. Versions 2 and 3 used other palettes:
@@ -2582,7 +2586,7 @@ const off = document.createElement("canvas"), octx = off.getContext("2d");
 let mapView = { zoom: 1, ox: 0, oy: 0 };    // CSS px per map px, and map origin on screen
 let mapImageData = null;                     // offscreen pixels (RGBA)
 let hoverPx = null;                          // [x, y] in map pixels under the mouse
-const GAME_RGB = BIOMES.map((b) => b.game), WATER_RGB = BIOMES.map((b) => b.wcol || [40, 90, 170, 0.6]);
+const GAME_RGB = BIOMES.map((b) => b.game), WATER_RGB = WATER_LOOK.map((b) => b.wcol || [40, 90, 170, 0.6]), WATER_BED = WATER_LOOK.map((b) => b.game);
 
 let needFit = false;
 function fitMap() {
@@ -2627,8 +2631,12 @@ function renderRect(x0, y0, x1, y1) {
         R = R * (1 - op) + k[0] * shade * op; G = G * (1 - op) + k[1] * shade * op; Bc = Bc * (1 - op) + k[2] * shade * op;
       }
       if (wsOK && WS[i] > h) {
-        const d = BE[i] === B_RIVER ? Math.max(WS[i] - h, 8) : WS[i] - h, wc = WATER_RGB[IS_WATER[BE[i]] ? BE[i] : B_OCEAN], m = biomeView ? clamp(0.55 + d * 0.04, 0.55, 0.9) * (0.4 + 0.6 * op) : 0.5;
-        R = R * (1 - m) + wc[0] * m; G = G * (1 - m) + wc[1] * m; Bc = Bc * (1 - m) + wc[2] * m;
+        // Water looks the same in both views and doesn't depend on the ground's height or
+        // biome: the water color over its own bed color, a little darker where deeper.
+        // (Blending over the relief made shallow water on high ground, i.e. rivers, pale.)
+        const wb = IS_WATER[BE[i]] ? BE[i] : B_OCEAN, wc = WATER_RGB[wb], bc = WATER_BED[wb], d = WS[i] - h;
+        const k = (0.7 + 0.3 * Math.min(shade, 1)) * clamp(1 - d * 0.015, 0.6, 1), m = 0.6;
+        R = bc[0] * k * (1 - m) + wc[0] * m; G = bc[1] * k * (1 - m) + wc[1] * m; Bc = bc[2] * k * (1 - m) + wc[2] * m;
       }
       if (slv && !(wsOK && WS[i] > h)) {
         // slope overlay: green walkable, yellow within 75%..100% of the limit, red over it
@@ -2969,11 +2977,11 @@ void main() {
   gl.useProgram(prog);
   gl.uniform1i(U.uHeight, 0); gl.uniform1i(U.uBiome, 1);
   gl.uniform3fv(U.uSun, SUN);
-  gl.uniform3fv(U.uPal, new Float32Array(BIOMES.flatMap((b) => b.game.map((v) => v / 255))));
+  gl.uniform3fv(U.uPal, new Float32Array(WATER_LOOK.flatMap((b) => b.game.map((v) => v / 255))));
 
   // Water: the same tiled grid, a second time, lifted to the water surface texture.
   // A cell is drawn if any of its 4 corners is wet (water biome, surface above bed), in
-  // the water color of that corner's biome, see-through so the bed shows below.
+  // the water color of that corner's biome, see-through so the bed shows below (open water is near opaque where shallow).
   waterProg = makeProgram(`#version 300 es
 precision highp float;
 precision highp int;
@@ -3004,6 +3012,7 @@ uniform highp usampler2D uBiome;
 uniform ivec2 uSize;
 uniform float uMaxH;
 uniform vec4 uWcol[${BIOMES.length}];
+uniform vec3 uWbed[${BIOMES.length}];  // bed color under each water biome
 uniform bool uIsWater[${BIOMES.length}];
 uniform vec3 uSun;
 ${FOG_GLSL}
@@ -3023,17 +3032,31 @@ void main() {
   if (b < 0) b = wetBiome(cell + ivec2(1, 1));
   if (b < 0) discard;
   vec4 col = uWcol[b];
+  // Ground height under this point (bilinear). Shallow water (rivers, and the sheet's edge
+  // over the banks) would show bright land through it, so there the water is drawn nearly
+  // opaque in the color it has over its own bed; from ~6 m deep it is see-through as usual
+  // (open water only: sea, lakes, rivers).
+  vec2 g = clamp(vGrid, vec2(0.0), vec2(uSize - 1));
+  ivec2 g0 = min(ivec2(floor(g)), uSize - 2); vec2 fg = g - vec2(g0);
+  float h00 = texelFetch(uHeight, g0, 0).r, h10 = texelFetch(uHeight, g0 + ivec2(1, 0), 0).r;
+  float h01 = texelFetch(uHeight, g0 + ivec2(0, 1), 0).r, h11 = texelFetch(uHeight, g0 + ivec2(1, 1), 0).r;
+  float ground = mix(mix(h00, h10, fg.x), mix(h01, h11, fg.x), fg.y) * uMaxH;
+  float t = b <= ${B_RIVER} ? smoothstep(1.0, 6.0, vWorld.z - ground) : 1.0;   // ponds, swamps: unchanged
+  vec3 overBed = col.rgb * col.a + uWbed[b] * (0.55 + 0.45 * max(0.0, uSun.z)) * (1.0 - col.a);
   vec3 n = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
   if (n.z < 0.0) n = -n;
   float shade = 0.8 + 0.2 * max(0.0, dot(n, uSun));
+  vec3 rgb = mix(overBed, col.rgb, t) * shade;
+  float a = mix(0.92, col.a, t);
   float f = edgeFog(vWorld);
-  fragColor = vec4(mix(col.rgb * shade, uFogCol, f), mix(col.a, 1.0, f));
+  fragColor = vec4(mix(rgb, uFogCol, f), mix(a, 1.0, f));
 }`);
-  WU = uniforms(waterProg, ["uHeight", "uWater", "uBiome", "uSize", "uTile", "uTilesX", "uMpp", "uMaxH", "uMVP", "uWcol", "uIsWater", "uSun", "uFog", "uFogCol", "uEye"]);
+  WU = uniforms(waterProg, ["uHeight", "uWater", "uBiome", "uSize", "uTile", "uTilesX", "uMpp", "uMaxH", "uMVP", "uWcol", "uWbed", "uIsWater", "uSun", "uFog", "uFogCol", "uEye"]);
   gl.useProgram(waterProg);
   gl.uniform1i(WU.uHeight, 0); gl.uniform1i(WU.uBiome, 1); gl.uniform1i(WU.uWater, 2);
   gl.uniform3fv(WU.uSun, SUN);
-  gl.uniform4fv(WU.uWcol, new Float32Array(BIOMES.flatMap((b) => b.wcol ? [b.wcol[0] / 255, b.wcol[1] / 255, b.wcol[2] / 255, b.wcol[3]] : [0, 0, 0, 0])));
+  gl.uniform4fv(WU.uWcol, new Float32Array(WATER_LOOK.flatMap((b) => b.wcol ? [b.wcol[0] / 255, b.wcol[1] / 255, b.wcol[2] / 255, b.wcol[3]] : [0, 0, 0, 0])));
+  gl.uniform3fv(WU.uWbed, new Float32Array(WATER_LOOK.flatMap((b) => b.game.map((v) => v / 255))));
   gl.uniform1iv(WU.uIsWater, new Int32Array(IS_WATER.map((x) => x ? 1 : 0)));
 
   // Sky backdrop (drawn first when edge fog is on): haze at and below the horizon,
