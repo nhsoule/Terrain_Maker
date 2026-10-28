@@ -511,7 +511,7 @@
     <h3>Workflow</h3>
     <ol>
       <li><b>Generate</b>: the <b>World</b> generator builds the land in layers like the real thing: coastline and broad lowland / plateau / highland regions, 1-4 mountain ranges along curved ridgelines with foothills and low passes, rolling hills, a few terraced rock outcrops and small cliffs, valleys cut by flowing water, then rivers and lakes. Open land stays walkable. Presets: <b>Traversable</b> (the default), Island, Archipelago, Continent, Highlands; sliders for ranges, mountain height, roughness, outcrops, erosion, rivers, lakes and the climate.</li>
-      <li><b>Traversable world</b> (the Traversable preset, or the sliders under that heading on any preset): <b>Massif</b> mountains with flat tops, cliff walls on some sides and long ramps or passes on others (<b>Cliffs</b> sets how much of the edge is wall); <b>Tiers</b>: the land steps in shelves of <b>Tier height</b> m, with planned cliff bands; <b>Max open-land slope</b> relaxes everything except the planned cliffs down to that angle (15° = easy walking); <b>Small features</b>: minor ridges, small tier clusters and narrow valleys between the big ones; <b>Winding</b>: longer, curvier rivers and ridges; one wide flat <b>meadow</b>; rivers that start on high ground (<b>River sources</b>, a fraction of the land height) and run to the sea or a lake; <b>Waterfalls</b> where a river drops over a tier or cliff (the water steps down into a plunge pool, a white sheet in 3D, a blue tile on the map); <b>Landmarks</b>: cliff walkway, rock arch over a river, crashed wreck, stranded platform, each on a flattened pad with a graded ramp up (letters on the map, models in 3D). The generator note shows how much land is over 15° and over the walkable limit, and the largest flat area. Falls and landmarks go into the export, project and undo. The older noise presets are under <b>Classic</b>. It takes a few seconds in the background.</li>
+      <li><b>Traversable world</b> (the Traversable preset, or the sliders under that heading on any preset): <b>Massif</b> mountains with flat tops, cliff walls on some sides and long ramps or passes on others (<b>Cliffs</b> sets how much of the edge is wall); <b>Tiers</b>: the land steps in shelves of <b>Tier height</b> m, with planned cliff bands; <b>Max open-land slope</b> relaxes everything except the planned cliffs down to that angle (15° = easy walking), but the tier risers may stay up to 26° (still walkable) so the shelves read as steps instead of one even ramp; <b>Small features</b>: minor ridges, small tier clusters and narrow valleys between the big ones; <b>Winding</b>: longer, curvier rivers and ridges; one wide flat <b>meadow</b>; rivers that start on high ground (<b>River sources</b>, a fraction of the land height) and run to the sea or a lake; <b>Waterfalls</b> where a river drops over a tier or cliff (the water steps down into a plunge pool, a white sheet in 3D, a blue tile on the map); <b>Landmarks</b>: cliff walkway, rock arch over a river, crashed wreck, stranded platform, each on a flattened pad with a graded ramp up (letters on the map, models in 3D). The generator note shows how much land is over 15° and over the walkable limit, and the largest flat area. Falls and landmarks go into the export, project and undo. The older noise presets are under <b>Classic</b>. It takes a few seconds in the background.</li>
       <li><b>Sculpt</b> the big moves first with a large brush: Raise / Lower whole areas, <b>Flatten</b> plateaus and build sites, <b>Ramp</b> roads between them, <b>River</b> to carve valleys to the sea. Then <b>Smooth</b>, <b>Roughen</b> or <b>Terrace</b> for the finish.</li>
       <li><b>Auto biome</b> (Climate mode): temperature from height, rain from the wind (wet near water and on the windward side of mountains, dry in their rain shadow), so biomes come out as whole regions: forests, plains, a desert, swamps on wet lowland, snow up high, rock on steep faces, beaches. Wind, moisture and region size are in the dialog. Re-run it after sculpting; your hand-painted water stays. <b>Classic</b> mode is the old rules + noise patches.</li>
       <li><b>Biome</b> brush / <b>Fill</b> for the details: lakes, ponds, swamps, a desert.</li>
@@ -1298,6 +1298,8 @@ function genCore() {
         CZ[i] = cz;
         const amt = Math.max(X.tiers, cz) * sstep(0.5, 3, b - X.sea) * (1 - 0.5 * X.M[i]) * (1 - 0.65 * md);
         h[i] = b + (base + tz - b) * amt + det * (1 - 0.45 * amt) * (1 - 0.7 * md);
+        // riser cells (the step and a cell's worth either side): the slope cap keeps them steeper
+        if (X.R && amt > 0.25 && (f1 - l1 > 0.55 || f1 - l1 < 0.04)) X.R[i] = 1;
       }
     }
     // planned cliffs: steep pixels in the cliff zones (one pixel margin)
@@ -1319,14 +1321,14 @@ function genCore() {
   // Before the exact cap: talus relaxation on a coarse grid (cells 4 px), material moves
   // downhill until slopes are under the limit, so steep sides become smooth aprons that
   // fill the valley floors instead of flat cut facets. Added back as a smooth difference.
-  function slopeRelax(h, w, hgt, mpp, sea, deg, C) {
+  function slopeRelax(h, w, hgt, mpp, sea, deg, C, R) {
     const f = 4, cw = Math.ceil((w - 1) / f) + 1, ch = Math.ceil((hgt - 1) / f) + 1, m = cw * ch;
     const hc = new Float32Array(m), cc = new Uint8Array(m);
     for (let j = 0; j < ch; j++) for (let i = 0; i < cw; i++) {
       let s = 0, q = 0, k = j * cw + i;
       for (let y = j * f - 2; y <= j * f + 2; y++) for (let x = i * f - 2; x <= i * f + 2; x++) {
         if (x < 0 || y < 0 || x >= w || y >= hgt) continue;
-        s += h[y * w + x]; q++; if (C[y * w + x]) cc[k] = 1;
+        s += h[y * w + x]; q++; if (C[y * w + x] || (R && R[y * w + x])) cc[k] = 1;
       }
       hc[k] = s / q;
     }
@@ -1356,10 +1358,14 @@ function genCore() {
       h[p] = Math.max(sea + 0.2, h[p] + (d0 * (1 - u) + d1 * u) * (1 - v) + (d2 * (1 - u) + d3 * u) * v);
     }
   }
-  function slopeCap(h, w, hgt, mpp, sea, deg, C, fixed) {
+  //   R (optional): tier riser cells, allowed up to RISER_DEG so the shelves keep a
+  //   visible step instead of being cut into one even ramp (still walkable).
+  const RISER_DEG = 26;
+  function slopeCap(h, w, hgt, mpp, sea, deg, C, fixed, R) {
     const n = w * hgt, g = new Float32Array(n), t = Math.tan(deg * Math.PI / 180) * mpp, tc = Math.tan(80 * Math.PI / 180) * mpp, d2 = Math.SQRT2, d5 = Math.sqrt(5);   // 16-direction chamfer: near-round cones, no octagon creases
+    const tr = Math.max(t, Math.tan(RISER_DEG * Math.PI / 180) * mpp);
     for (let i = 0; i < n; i++) g[i] = h[i] < sea ? sea : h[i];
-    const relax = (i, j, d) => { const lim = g[j] + d * (C[i] || C[j] ? tc : t); if (g[i] > lim && h[i] >= sea && !(fixed && fixed[i])) g[i] = lim; };
+    const relax = (i, j, d) => { const lim = g[j] + d * (C[i] || C[j] ? tc : R && (R[i] || R[j]) ? tr : t); if (g[i] > lim && h[i] >= sea && !(fixed && fixed[i])) g[i] = lim; };
     for (let it = 0; it < 3; it++) {
       for (let r = 0; r < hgt; r++) for (let c = 0; c < w; c++) {
         const i = r * w + c;
@@ -1749,7 +1755,8 @@ function genCore() {
       if ((r & 63) === 0) prog(0.16 + 0.1 * r / hgt, "hills");
     }
     // 3b. Tiers: shelves with short risers, planned cliff bands (C) in the cliff zones.
-    if (tiers > 0 || cliffs > 0 || MD) tierStage(h, w, hgt, mpp, { tiers, tierH, cliffs, sea, seed, Lf, M, MD, C });
+    const Rz = new Uint8Array(n);   // tier riser cells (see slopeCap)
+    if (tiers > 0 || cliffs > 0 || MD) tierStage(h, w, hgt, mpp, { tiers, tierH, cliffs, sea, seed, Lf, M, MD, C, R: Rz });
     // the meadow settles to one level with a low crown (a few m), so water runs around it
     // instead of splitting it, and it stays one wide walkable area
     if (MD) {
@@ -1796,7 +1803,7 @@ function genCore() {
     // droplets for gullies (lighter than the classic generator)
     if (er > 0) erode(h, w, hgt, mpp, er * 0.45, seed, (q, what) => prog(0.6 + 0.2 * q, what), C);
     // 4b. Slope cap: open land no steeper than the target, planned cliffs stay.
-    if (tSlope > 0) { slopeRelax(h, w, hgt, mpp, sea, tSlope * 0.8, C); slopeCap(h, w, hgt, mpp, sea, tSlope * 0.9, C); }   // a margin under the target (slopes are measured over 2 px)
+    if (tSlope > 0) { slopeRelax(h, w, hgt, mpp, sea, tSlope * 0.8, C, Rz); slopeCap(h, w, hgt, mpp, sea, tSlope * 0.9, C, null, Rz); }   // a margin under the target (slopes are measured over 2 px)
     const tErode = Date.now() - t1;
     // 5. Rivers along the biggest drainage lines, from the sea up into the hills.
     prog(0.8, "rivers");
@@ -1927,7 +1934,7 @@ function genCore() {
     if (tSlope > 0) {
       const CX = Uint8Array.from(C);
       for (let i = 0; i < n; i++) if (tal[i] === steepT && M[i] <= 0.5) CX[i] = 1;
-      slopeCap(h, w, hgt, mpp, sea, tSlope * 0.9, CX, water);
+      slopeCap(h, w, hgt, mpp, sea, tSlope * 0.9, CX, water, Rz);
     }
     for (let pass = 0; pass < (tSlope > 0 ? 0 : 10); pass++) {
       tmp.fill(0);
