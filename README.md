@@ -98,6 +98,19 @@ In both modes the scope is the whole map, the selection, or only pixels you have
 
 ![World presets: Island 7, Archipelago 11, Continent 5, Highlands 3](screenshot_worlds.png)
 
+### Resolution (2 m or 1 m per pixel)
+
+The **Resolution** choice in the Generate dialog keeps the world the same size in meters and changes the pixel count:
+
+| Resolution | Map | World | Chunks (32 cells) | Whole world as meshes | `.bin` (uint16) |
+|---|---|---|---|---|---|
+| 2 m per pixel (standard) | 1025 × 1025 px | 2048 m | 32 × 32 of 64 m | 2.1 M triangles, 72 MB | 5.0 MB |
+| 1 m per pixel | 2049 × 2049 px | 2048 m | 64 × 64 of 32 m | 8.4 M triangles, 288 MB | 20 MB |
+
+Every generator distance is in meters (tier blur, cliff margins, river widths and banks, waterfall lips, landmark pads, the talus grid, erosion), so 1 m makes the same landforms with finer detail: crisper tier risers and cliff edges. The exact river routes, waterfalls and biome borders can land differently, since erosion is random per pixel. A 1 m map takes about 2–3× as long to generate, keeps fewer undo steps (13 instead of 40), and is slow on phones. Undo after a resolution change brings back the old size. **Map settings → Map size** can set any other size and m/px.
+
+![2 m vs 1 m per pixel, same seed, same spot](screenshot_1m_vs_2m.png)
+
 ### World generator (default)
 
 New maps use the **World** generator. It builds the land in layers, the way real land is shaped, instead of one noise field:
