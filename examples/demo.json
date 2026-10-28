@@ -1,0 +1,397 @@
+{
+ "format": "terrain-maker-project",
+ "version": 1,
+ "name": "demo_island",
+ "size": 2048,
+ "mpp": 0.5,
+ "sea": 0,
+ "snow": 170,
+ "chunk": 32,
+ "base": {
+  "h": -20,
+  "amp": 4,
+  "scale": 220,
+  "seed": 1
+ },
+ "features": [
+  {
+   "id": "f1",
+   "type": "shoreline",
+   "name": "Coast",
+   "seed": 3,
+   "closed": true,
+   "wid": 220,
+   "hgt": 8,
+   "falloff": 0,
+   "blend": "shore",
+   "params": {
+    "beach": 30,
+    "beachH": 1.6,
+    "seaDepth": 20,
+    "rough": 0.5
+   },
+   "pts": [
+    [
+     330,
+     420
+    ],
+    [
+     700,
+     230
+    ],
+    [
+     1150,
+     250
+    ],
+    [
+     1560,
+     330
+    ],
+    [
+     1800,
+     620
+    ],
+    [
+     1830,
+     1000
+    ],
+    [
+     1870,
+     1420
+    ],
+    [
+     1760,
+     1840
+    ],
+    [
+     1300,
+     1900
+    ],
+    [
+     800,
+     1880
+    ],
+    [
+     330,
+     1800
+    ],
+    [
+     230,
+     1400
+    ],
+    [
+     300,
+     1050
+    ],
+    [
+     200,
+     720
+    ]
+   ]
+  },
+  {
+   "id": "f2",
+   "type": "range",
+   "name": "North range",
+   "seed": 5,
+   "wid": 420,
+   "hgt": 240,
+   "falloff": 60,
+   "blend": "add",
+   "params": {
+    "peaks": 5,
+    "sharp": 0.6,
+    "spurs": 0.6,
+    "wiggle": 0.4
+   },
+   "pts": [
+    [
+     480,
+     1460
+    ],
+    [
+     820,
+     1600
+    ],
+    [
+     1180,
+     1560
+    ],
+    [
+     1520,
+     1640
+    ]
+   ]
+  },
+  {
+   "id": "f3",
+   "type": "mountain",
+   "name": "East peak",
+   "seed": 7,
+   "x": 1480,
+   "y": 1120,
+   "rot": 20,
+   "len": 560,
+   "wid": 460,
+   "hgt": 210,
+   "falloff": 60,
+   "blend": "add",
+   "params": {
+    "sharp": 0.6,
+    "ridges": 0.6,
+    "warp": 0.5,
+    "detail": 0.5
+   }
+  },
+  {
+   "id": "f4",
+   "type": "plateau",
+   "name": "West mesa",
+   "seed": 11,
+   "x": 640,
+   "y": 940,
+   "rot": -15,
+   "len": 460,
+   "wid": 360,
+   "hgt": 70,
+   "falloff": 0,
+   "z": 0,
+   "blend": "max",
+   "params": {
+    "side": 30,
+    "ledges": 2,
+    "warp": 0.6,
+    "talus": 25
+   }
+  },
+  {
+   "id": "f5",
+   "type": "cliff",
+   "name": "Central cliff",
+   "seed": 13,
+   "wid": 700,
+   "hgt": 28,
+   "falloff": 0,
+   "blend": "add",
+   "params": {
+    "lean": 8,
+    "rough": 0.5,
+    "strata": 3,
+    "side": 1
+   },
+   "pts": [
+    [
+     760,
+     700
+    ],
+    [
+     1000,
+     770
+    ],
+    [
+     1200,
+     790
+    ],
+    [
+     1420,
+     740
+    ]
+   ]
+  },
+  {
+   "id": "f6",
+   "type": "hill",
+   "name": "South hill",
+   "seed": 17,
+   "x": 470,
+   "y": 560,
+   "rot": 30,
+   "len": 340,
+   "wid": 260,
+   "hgt": 30,
+   "falloff": 40,
+   "blend": "add",
+   "params": {
+    "warp": 0.4,
+    "roll": 0.3
+   }
+  },
+  {
+   "id": "f7",
+   "type": "terraces",
+   "name": "Terraces",
+   "seed": 19,
+   "x": 1560,
+   "y": 760,
+   "rot": 0,
+   "len": 340,
+   "wid": 280,
+   "hgt": 42,
+   "falloff": 30,
+   "blend": "add",
+   "params": {
+    "step": 6,
+    "riser": 0.35,
+    "warp": 0.5
+   }
+  },
+  {
+   "id": "f8",
+   "type": "lake",
+   "name": "Lake",
+   "seed": 23,
+   "x": 880,
+   "y": 1290,
+   "rot": 10,
+   "len": 200,
+   "wid": 140,
+   "hgt": 6,
+   "falloff": 30,
+   "blend": "carve",
+   "params": {
+    "warp": 0.5,
+    "shore": 0.35
+   }
+  },
+  {
+   "id": "f9",
+   "type": "river",
+   "name": "River",
+   "seed": 29,
+   "wid": 14,
+   "hgt": 2.5,
+   "falloff": 0,
+   "blend": "carve",
+   "params": {
+    "bank": 26,
+    "meander": 0.5,
+    "water": 1.6,
+    "gorge": 0.2
+   },
+   "pts": [
+    [
+     1150,
+     1500
+    ],
+    [
+     1180,
+     1330
+    ],
+    [
+     1150,
+     1080
+    ],
+    [
+     1150,
+     900
+    ],
+    [
+     1140,
+     700
+    ],
+    [
+     1080,
+     520
+    ],
+    [
+     1040,
+     300
+    ],
+    [
+     1020,
+     150
+    ]
+   ]
+  },
+  {
+   "id": "f10",
+   "type": "waterfall",
+   "name": "Falls",
+   "seed": 31,
+   "x": 1145,
+   "y": 785,
+   "rot": -90,
+   "len": 60,
+   "wid": 22,
+   "hgt": 2,
+   "falloff": 0,
+   "blend": "carve",
+   "params": {
+    "reach": 30,
+    "pool": 1
+   }
+  },
+  {
+   "id": "f11",
+   "type": "trail",
+   "name": "Mesa trail",
+   "seed": 37,
+   "wid": 6,
+   "hgt": 0,
+   "falloff": 6,
+   "blend": "flatten",
+   "params": {
+    "smooth": 40,
+    "ramp": 0
+   },
+   "pts": [
+    [
+     520,
+     380
+    ],
+    [
+     600,
+     560
+    ],
+    [
+     700,
+     700
+    ],
+    [
+     760,
+     800
+    ]
+   ]
+  },
+  {
+   "id": "f12",
+   "type": "worldedge",
+   "name": "North wall",
+   "seed": 41,
+   "wid": 400,
+   "hgt": 110,
+   "falloff": 0,
+   "z": 0,
+   "blend": "max",
+   "closed": false,
+   "params": {
+    "lean": 3,
+    "rough": 0.6,
+    "strata": 6,
+    "side": 1
+   },
+   "pts": [
+    [
+     120,
+     1720
+    ],
+    [
+     600,
+     1830
+    ],
+    [
+     1100,
+     1800
+    ],
+    [
+     1600,
+     1860
+    ],
+    [
+     1960,
+     1760
+    ]
+   ]
+  }
+ ]
+}
