@@ -102,6 +102,8 @@ Projects store only the feature list, so the `.json` is a few kB.
 
 ## 3D and first person
 
+![3D view](screenshot_3d.png)
+
 - **3D:** drag orbits, right-drag (or Shift + drag) pans, and the wheel zooms. The HUD shows the tiles drawn and culled and the level-of-detail mix.
 - **Walk:**
   - Click to look around with the mouse (pointer lock).
