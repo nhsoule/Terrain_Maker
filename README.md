@@ -1,331 +1,151 @@
 # Terrain Maker
 
-A terrain editor for low-poly game worlds: generate a base, sculpt it, let it paint the biomes, walk it in first person, and export it as a C header or a binary file.
+A CAD-style terrain editor for low-poly game worlds. Place features from a drawer onto a 2D map: mountains, ranges, cliffs, rivers, lakes, waterfalls and more. Move, rotate, stretch and reroll each one on its own. The editor folds them into one height field, paints the biomes, and lets you fly over it or walk it in first person. Export it as a C header or a binary file.
 
 ![Terrain Maker](screenshot.png)
 
 **Live:** https://nhsoule.github.io/Terrain_Maker/
 
-Everything is one `index.html`. There is no build step and nothing to install. It works in desktop and phone browsers.
+Everything is one `index.html`. There is no build step and nothing to install. The first visit opens the demo island ([`examples/demo.json`](examples/demo.json)). The previous random generator is still at [`legacy.html`](https://nhsoule.github.io/Terrain_Maker/legacy.html), and the git tag `legacy-generator` marks its last version.
 
-## Two layers
+## How it works
 
-The map is two separate layers. Each pixel is one terrain vertex.
+Nothing is random. The world is **2048 m × 2048 m**, and it is rebuilt from an ordered list of features over a base:
 
-- **Height**: a float in meters per pixel, between **Min height** and **Max height** (Map settings, default 0 to 200 m, sea level 20 m). The sculpt tools only change this layer.
-- **Biome**: one of 10 biomes per pixel (ids 0..9 below). The biome tools only change this layer.
+- **Base:** a sea floor (default −20 m) with gentle noise. It can be replaced by an imported map (see Import).
+- **Features** apply top to bottom in the feature tree. Each feature has:
+  - a type, a name, and its own **seed**. **Reroll** (`R`) changes only that feature's seed, so only it changes.
+  - a placement: position, rotation, and scale X / Y / Z (length, width and height in metres).
+  - a **blend**:
+    - **add** raises the ground by the shape.
+    - **carve** lowers it.
+    - **max** raises it to Base Z + shape, but never lowers.
+    - **flatten** pulls it to Base Z + shape.
+  - a **falloff** (m), plus the type's own parameters.
+- **Splines:** ranges, cliffs, world edges, valleys, rivers, trails and the shoreline follow a smooth curve through control points.
 
-The 2D view shows either layer (**H** toggles):
-- **Height**: grey by height with hillshade (sun from the north-west).
-- **Biome**: the biome colors over the same relief, with an opacity slider.
-- **Contours** (**K**) draws a line every few meters (a round step for about 20 lines over the range), and every 5th line darker.
-- **Slope** (**J**) tints the ground by how steep it is: green is walkable, yellow is close to the limit (75 % of it), red is too steep. The limit is **Steep slope** in Map settings (default 35°).
+The rebuild is parametric: change any value and the map follows. A background worker recomputes only the box around what changed. The result is bit-for-bit the same as a full rebuild (the test suite checks this).
 
-Hovering shows the height, biome, water depth, slope, pixel and world position.
+## Features (v1)
 
-| Id | Biome | Game color (3D + export) | Water |
-|---|---|---|---|
-| 0 | Ocean  | 58, 86, 120   | yes |
-| 1 | Lake   | 76, 98, 110   | yes |
-| 2 | River  | 98, 104, 96   | yes |
-| 3 | Pond   | 74, 90, 64    | yes |
-| 4 | Swamp  | 78, 92, 52    | yes |
-| 5 | Desert | 226, 200, 130 | |
-| 6 | Snow   | 240, 244, 250 | |
-| 7 | Plains (grassy) | 106, 190, 48 | |
-| 8 | Rock   | 128, 130, 140 | |
-| 9 | Forest | 40, 122, 52   | |
-
-New biomes will only be added at the end. The packed export format allows up to 16. For water biomes the game color is the bed.
-
-## Workflow
-
-1. **Generate** a world (or keep the island a new map starts with).
-2. **Sculpt** the big moves with a large brush: add a mountain **Range**, raise a **Plateau**, raise or lower whole areas, **Flatten** build sites, **Ramp** roads between them, and carve **River** valleys to the sea. Finish with **Smooth**, **Roughen** or **Terrace**. Check walkability with the **Slope** view (**J**).
-3. **Auto biome** paints climate regions (forest, grassland, desert, swamp, snow) plus rock on steep slopes. Re-run it after sculpting.
-4. Touch up by hand with the **Biome** brush and **Fill**: lakes, ponds, a desert.
-5. Walk it with **Player** at your game's eye height and FOV.
-6. **Export**.
-
-## Tools
-
-The brush **Size** is in meters, and each tool remembers its own size. There is also **Strength**, and **Falloff** (0 = hard edge, 1 = very soft). A pen's pressure scales the strength. The map shows the brush outline and the falloff ring.
-
-The tools work on the 2D map and on the 3D view. **Sculpt in 3D** (**E**) raycasts the brush onto the terrain. In that mode right drag orbits and middle or Shift drag pans.
-
-**Sculpt (height layer)**
-
-| Tool | Key | What it does |
-|---|---|---|
-| Raise | R | Pushes the ground up under the brush. |
-| Lower | L | Pushes the ground down. |
-| Smooth | S | Softens bumps and sharp edges. |
-| Flatten | V | Levels to the height where the stroke starts, or to a typed height (tick **fixed**). **Alt+click** (long press on touch) samples the height. |
-| Ramp | P | Drag a line to get an evenly graded road or ramp from the start height to the end height. Size is the road width, and Falloff is how far the embankment blends out. |
-| Roughen | N | Adds natural bumps. The detail size is in meters. |
-| Terrace | T | Turns slopes into flat shelves with steep steps. The step height is in meters. |
-| River | C | Drag a path. It carves a U-shaped channel that always runs downhill (high end to low end, at least a 0.1% grade), lowers the banks, and paints the bed River. Size is the channel width, and there is a depth setting. |
-| Range | A | Drag a path to raise a mountain range along it: a ridged crest with spurs, foothills on both sides and (optionally) a low walkable pass. Size is the width of the steep core; **Height** is the crest height above the ground (default 90 m). It uses the same shape as the generator, so it blends in. One undo step. |
-| Plateau | U | Raises the ground under the brush to a flat top (the height where the stroke starts + **Lift**, default 12 m, or a typed height with **fixed**). It never lowers ground, and the falloff makes the escarpment. |
-
-**Biome layer**
-
-| Tool | Key | What it does |
-|---|---|---|
-| Biome brush | B | Paints the selected biome (keys `1`-`9`, `0`). |
-| Fill | G | Fills a connected area of one biome. |
-| Pick | I | Takes the biome under the cursor. **Alt+click** with the brush or Fill does the same. |
-| Select | M | Paints a soft selection (Alt erases). **Generate** can blend into it, and **Auto biome** can be limited to it. |
-
-**Auto biome** has two modes.
-
-**Climate** (the default) paints biomes as large regions, the way climate does:
-1. **Temperature** falls with height (and, if you set a latitude direction, toward one map edge).
-2. **Moisture** comes from the wind: air picks up water over the sea and lakes and drops it as it climbs mountains, so the windward side is wet and the lee side is in a **rain shadow**. Being near water and some large-scale noise add to it.
-3. A Whittaker-style table turns temperature and moisture into Snow (cold), Swamp (very wet, flat, low and by water), Forest (wet), Desert (hot and dry) or Plains (grassland).
-4. **Region cleanup**: a majority filter at the **region size** (default 300 m) and merging of small patches, then wandering borders. So you get whole forests, grasslands and deserts, not speckles.
-5. Then terrain: Rock on slopes ≥ the rock angle, Snow above the snow line, beaches (optional), and Desert for the sea floor and dry beds.
-
-Settings: **wind direction** (where it blows from, default 270° = west), **moisture** (−1 dry … +1 wet), **region size**, **latitude** (none / colder north / colder south), **beaches**, plus the rock angle and snow line. The generator dialog has the same climate settings.
-
-**Classic** is the old rule list, per pixel: below sea level Desert, slope ≥ the rock angle (36°) Rock, above the snow line Snow, near water a Desert beach, flat low wet ground Swamp patches, otherwise Forest patches over Plains.
-
-In both modes the scope is the whole map, the selection, or only pixels you haven't painted by hand (so hand-painted biomes are kept). Hand-painted water can be kept.
-
-## Generator
-
-**Generate** takes a **seed** and a preset. It always makes the same map from the same seed and settings, on any device.
-
-![World presets: Island 7, Archipelago 11, Continent 5, Highlands 3](screenshot_worlds.png)
-
-### Resolution (2 m or 1 m per pixel)
-
-The **Resolution** choice in the Generate dialog keeps the world the same size in meters and changes the pixel count:
-
-| Resolution | Map | World | Chunks (32 cells) | Whole world as meshes | `.bin` (uint16) |
-|---|---|---|---|---|---|
-| 2 m per pixel (standard) | 1025 × 1025 px | 2048 m | 32 × 32 of 64 m | 2.1 M triangles, 72 MB | 5.0 MB |
-| 1 m per pixel | 2049 × 2049 px | 2048 m | 64 × 64 of 32 m | 8.4 M triangles, 288 MB | 20 MB |
-
-Every generator distance is in meters (tier blur, cliff margins, river widths and banks, waterfall lips, landmark pads, the talus grid, erosion), so 1 m makes the same landforms with finer detail: crisper tier risers and cliff edges. The exact river routes, waterfalls and biome borders can land differently, since erosion is random per pixel. A 1 m map takes about 2–3× as long to generate, keeps fewer undo steps (13 instead of 40), and is slow on phones. Undo after a resolution change brings back the old size. **Map settings → Map size** can set any other size and m/px.
-
-![2 m vs 1 m per pixel, same seed, same spot](screenshot_1m_vs_2m.png)
-
-### World generator (default)
-
-New maps use the **World** generator. It builds the land in layers, the way real land is shaped, instead of one noise field:
-
-1. **Land shape and regions.** A coastline, then broad regions at three levels (lowland, plateau, highland) with soft escarpments between them.
-2. **Mountain ranges.** 1–4 ranges along curved ridgelines, with a ridged crest, spurs, foothills on both sides and low **passes** you can walk over. Mountains only appear in the ranges, so most of the land is open.
-3. **Detail by zone.** Rolling hills on open land, a few terraced rock **outcrops and small cliffs**, and sharp ridges only in the mountain cores.
-4. **Erosion.** Water erosion cuts valleys (stronger in the mountains, gentle on the lowlands), then slope erosion settles anything steeper than the rock angle.
-5. **Rivers and lakes.** Rivers start in the hills and flow downhill to the sea (or off the map edge), filling lakes in the basins on the way. They are painted River and Lake.
-6. **Walkable by design.** Open land is kept under the steep-slope limit; only range cores, outcrops and cliffs are steep. In tests about 88–93 % of the land is walkable at 35°.
-
-| Preset | Look |
+| Type | What it makes |
 |---|---|
-| Traversable | An island built to be walked: flat-topped massifs with cliff walls and ramps, stepped tiers, a wide meadow, winding rivers from the high ground with waterfalls, and landmarks (the default map is Traversable, seed 7) |
-| Island | Sea all round, 2 ranges |
-| Archipelago | A main island with a range, and several smaller islands |
-| Continent | Coast on one side, 3 ranges, inland lakes |
-| Highlands | All land: plateaus and high ranges with snow |
+| Mountain | A single peak with ridges and gullies running down from the summit. |
+| Mountain range | A ridge along a spline with several peaks, saddles and gullies; the ends taper. |
+| Hill | A soft rounded hill. |
+| Plateau / mesa | A flat top with steep rocky sides. |
+| Cliff wall | A wall along a spline, from a low side to a high side (you set the height). |
+| World edge | A tall wall (60 m or more) at the edge of the playable area, with a rising slope behind it. |
+| River | A channel along a spline. Its bed never climbs downstream, and it ends in the sea or a lake. |
+| Lake | A basin that fills to its spill level (the lowest point of its rim). |
+| Waterfall | A drop where a river crosses a cliff. Dropping it near one snaps it to the crossing, and it is exported in the features section. |
+| Shoreline | A closed spline: land inside, beach along it, sea outside. |
+| Valley / canyon | A trough carved along a spline. |
+| Trail / ramp | A graded path along a spline, which cuts and fills the ground to an even slope. |
+| Terraced hillside | A hill in flat steps. |
 
-Sliders: **Mountain ranges** (count), **Mountain height**, **Roughness** (hills), **Rock outcrops / small cliffs**, **Erosion**, **Rivers**, **Lakes**, **Rough facets on cliffs**, plus the climate settings for Auto biome.
+**Coming soon** (shown greyed out in the drawer): crater/caldera, dunes, meadow, escarpment, sea stack, arch, overhang, swamp, cove, ravine, crash site, cliff walkway, platform, lookout, and painted biome zones.
 
-#### Traversable world
+**Biomes** are automatic:
 
-The **Traversable world** section of the Generate dialog holds the settings the Traversable preset turns on. The other presets have them all off, so they make the same maps as before.
+- sand near the sea
+- rock on steep ground
+- snow above the snow line
+- forest and plains elsewhere (from noise)
+- path on trails
 
-| Setting | Traversable | Off | What it does |
-|---|---|---|---|
-| Mountain style | Massifs | Ridges | Massifs have flat tops, cliff walls on some sides and walkable ramps on the others |
-| Tiers | 0.8 | 0 | Strength of the stepped shelves on open land |
-| Tier height | 4 m | | Height of one step |
-| Cliffs | 0.5 | 0 | Share of massif sides and tier edges that stay as cliff bands |
-| Max open-land slope | 15° | 0 (off) | After erosion, land outside the cliff bands, rivers and lakes is relaxed and capped at this slope |
-| Small features | 12 | 0 | Minor ridges, small tier clusters and narrow valleys |
-| Winding | 0.7 | 0 | How much rivers meander and ridgelines bend |
-| River sources from high ground | 0.5 | 0 | Rivers start above this share of the land height and run down to the sea or a lake |
-| Waterfalls | 4 | 0 | Where a river crosses a cliff band or tier edge it drops in one step into a plunge pool. The water surface never rises downstream |
-| Landmarks | 5 | 0 | Cliff walkways, rock arches, crashed wrecks and stranded platforms, each on a flattened pad with a graded ramp |
-| Wide flat meadow | on | off | Keeps one wide flat or gently rolling area free of ranges and cliffs |
+River, lake and sea use one water colour.
 
-![Traversable, seed 7: the 2D map with waterfall and landmark icons, and the 3D view](screenshot_traversable.png)
+## Editing
 
-![First person at a waterfall](screenshot_traversable_fp_fall.png)
+- **Add:** click a type in the drawer, then click the map. The new feature has a default shape and is selected. `Esc` cancels.
+- **Select:** click the feature on the map or in the tree. Its outline and gizmo appear.
+- **Move:** drag the feature or its diamond.
+- **Rotate:** drag the round handle.
+- **Scale and stretch:** the square handles change the length, the width, or both. Height (Z) is in the properties panel.
+- **Splines:**
+  - Drag the numbered control points.
+  - Double-click the curve to insert a point.
+  - Right-click a point (or select it and press `Del`) to delete it.
+  - The control points are also listed in the properties panel.
+- **Snap:** hold `Shift` while dragging to snap to the grid (and to 15° steps when rotating). The grid shown adapts to the zoom.
+- **Pan and zoom:** middle-drag, Space + drag, or drag on empty ground pans. The wheel zooms at the cursor, and `F` fits the map.
+- **Tree:**
+  - Drag a feature to reorder it; ▲ / ▼ also move it.
+  - ● / ◌ hides (suppresses) it; `H` toggles the selected one.
+  - Double-click to rename.
+  - Duplicate with `Ctrl+D` and delete with `Del`.
+- **Undo / redo:** `Ctrl+Z` / `Ctrl+Shift+Z` (or `Ctrl+Y`).
+- **Preview while dragging:** the outline follows the mouse, and the full-resolution rebuild runs on release.
 
-Waterfalls and landmarks show as icons on the 2D map and as simple shapes in the 3D view (water sheets, decks, arches, hulls, platforms). They are saved with the project, kept by undo, and written to the exports (see below). The note under the generator shows their counts and the share of land over 15° and over the steep-slope limit.
+## Resolution
 
-In tests (seeds 1–10, 1025 × 1025 @ 2 m), Traversable has 7–11 % of its land over 15° (29–41 % with the slope cap off), the largest flat area is 6–14 % of the land, and the rivers have a sinuosity of 1.7–2.8.
+Resolution is a project setting: **2, 1 or 0.5 m** per sample (1025², 2049² or 4097² samples). The default is **0.5 m**.
 
-It runs in a Web Worker with a progress bar. At 1025 × 1025 it takes about 3–6 s (Archipelago 2.8 s, Island 3.4–3.9 s, Traversable 4.6–5.5 s, Continent 5.3 s, Highlands 5.8 s, of which climate biomes are about 0.5 s) in a headless test browser; a desktop is usually faster.
+You always edit at the chosen resolution, and nothing is reduced while you work:
 
-### Classic generator
+- **Worker:** only the changed box is rebuilt.
+- **2D view:** draws the height field straight from GPU textures.
+- **3D view:** reads the same full-resolution textures. Each 64-sample tile picks a level of detail by its distance, and tiles outside the view are skipped. Close ground is drawn at full resolution; far ground uses every 2nd, 4th … sample, since a single screen pixel covers many samples there. The height field itself is not reduced.
+- **First person:** stands on the full-resolution field.
 
-The old presets (Island, Continent, Mountains & valleys, Rolling hills) are kept under **Generator → Classic**: domain-warped fBm noise, masked ridged noise and hydraulic erosion, with **Feature size**, **Mountains**, **Warp**, **Erosion**, **Edges** and optional **Terraces**. It takes about 2 s.
+Rough numbers, measured in headless Chrome with software rendering, so a normal machine is faster:
 
-**Only in selection** blends the new terrain into the selected area (both generators). **Auto biome after** paints the result. Undo brings the old map back.
-
-## Water
-
-| Water | How it works |
+| Measurement | Result |
 |---|---|
-| Ocean | Automatic: ground below **Sea level** that connects to the map edge (or to painted Ocean) is sea, and its surface is at sea level. Sculpt the coast and the shoreline follows. Turn it off with **Auto ocean** in Map settings to paint Ocean by hand. |
-| Lake, Pond | Paint the biome in a dip. Each connected patch fills to its **spill level**: the lowest ground around its edge, and at least 0.3 m above its lowest bed. A bed above that surface is dry shore. |
-| River | The surface is the bed + 0.8 m, and it flows downhill. A priority flood runs upstream from the river's outlets (where it touches Ocean, Lake or Pond). The surface never drops going upstream, so a dip in the bed becomes a pool. The River tool carves the bed for you. |
-| Swamp | Wet ground with a 0.25 m film of standing water. |
+| Full build at 0.5 m | about 7 s (2.7 s at 1 m) |
+| Moving a 560 m mountain | 2.2 s |
+| Rerolling that mountain | 1.9 s |
+| Height + water + biome grids at 0.5 m | 144 MB |
 
-A sample is under water where `surface > bed`, and `depth = surface - bed`. The 3D view draws the surfaces see-through, tinted per water type.
+Projects store only the feature list, so the `.json` is a few kB.
+
+## 3D and first person
+
+![3D view](screenshot_3d.png)
+
+- **3D:** drag orbits, right-drag (or Shift + drag) pans, and the wheel zooms. The HUD shows the tiles drawn and culled and the level-of-detail mix.
+- **Walk:**
+  - Click to look around with the mouse (pointer lock).
+  - Move with `WASD` or the arrows; `Shift` runs.
+  - Ground steeper than 50° blocks you.
+  - The **edge fog** toggle hides the end of the world.
 
 ## Files
 
-**File** menu:
-- **Save project** (`.tmproj`): both layers at full float precision plus all the settings. It is a compressed binary file.
-- **Open project / old map** takes:
-  - a `.tmproj`
-  - a height or biome PNG
-  - a plain greyscale heightmap
-  - an older Terrain Maker map: a one-image PNG or a `.json` project. These are converted (see below).
-- **Save height PNG**: a 16-bit greyscale PNG, black = Min height, white = Max height. The range is stored in the PNG, so it opens at the same heights (within 1/65535 of the range).
-- **Save biome PNG**: an RGB PNG, one key color per biome (the swatch underline colors).
-- **Import height PNG / Import biome PNG** replace one layer and keep the other. Images of another size are scaled: bilinear for height, nearest pixel for biomes. Any 8- or 16-bit grey or color PNG works for height, using its luminance.
-- **Import .h / .bin** opens a game export to keep editing it (see [Importing game exports](#importing-game-exports-h--bin)). **Open** also accepts these files.
-- **New flat map** starts a flat map.
-
-Work autosaves in the browser (IndexedDB, so 4096 × 4096 maps fit).
-
-### Importing game exports (`.h` / `.bin`)
-
-Use **File → Import .h / .bin** or **Open**, or drop the file anywhere on the page. Both are read in all three formats (uint16 + uint8, uint8 + uint8, packed uint16).
-
-What comes back:
-- Size, m/px, height range, sea level and chunk cells.
-- The heights, in meters: `z = v × range / maxQ + Min height`.
-- Waterfalls and landmarks, if the file has them. Older files without them still import.
-- The biomes. They are matched by name from the file's `enum TerrainBiome` / name table where possible, otherwise by id. Ids the app does not know become Plains (the toast says how many).
-
-Notes:
-- **`.bin`**: version 2, and version 1 (no biome table or water). The `.bin` does not store the Min height, so a small dialog asks for it. It defaults to 0; use your old Min height if it was below 0.
-- **`.h`**: the current header and older ones:
-  - with no `height_offset` (heights start at 0 m)
-  - with 11 biomes (Fall becomes Forest)
-  - with 7 biomes (Water → Ocean, Sand / Dirt → Desert, Grass → Plains, as for older maps)
-
-  Values may be decimal or hex, and comments are skipped. Big headers (a 2000 × 2000 uint16 header is about 45 MB) are read in a background worker with a progress bar. In tests that took about 0.4–1 s of parsing, and 5–9 s with page work included.
-- **Water is recomputed** from the biomes and heights, not read from the file. If the result differs from the file's water grid by more than 2 % of the wet samples, the toast says so.
-- **8-bit files** only have 256 height steps. The toast shows the step size; smooth before sculpting fine detail.
-- The import is a single undo step. A broken file (cut off, wrong magic or version, values out of range, missing arrays) shows an error, and the map stays as it was.
-
-**Round trip.** Export → import → export gives the same height and biome data byte for byte, in every format, for both `.h` and `.bin`. The 2000 × 2000 (uneven chunks) `.h` and `.bin` files are fully identical. The exceptions are:
-- **Water grid.** The first re-export of a map that was not imported can differ by a few samples (117 of 740k in the test), because water is rebuilt from the quantized heights. After that it stays the same.
-- **Auto Ocean.** In older files, land biomes that sit below sea level and touch the ocean become Ocean, the same way as when editing.
-- **Map name.** A `.h` keeps its `<name>` prefix. A `.bin` is named after the file.
-
-**Older maps** (one color image, where hue = biome and brightness = height) are split into the two layers when you open them, including old autosaves. Heights keep their values (Min height becomes 0). Biomes are decoded with the palette the map was saved with:
-- Version 3 Fall becomes Forest.
-- Version 2 Water becomes Ocean, Sand and Dirt become Desert, and Grass becomes Plains.
-
-## Map settings
-
-- **Width and height** in pixels (16 to 4096 each, they can differ) and **meters per pixel**. Each pixel is a vertex, so the world is `(pixels - 1) * m/px` meters.
-  - The default is 1025 × 1025 px @ 2 m = 2048 m, which is exactly 32 × 32 chunks of 32 cells.
-  - Presets: 2049 @ 1 m, 1001 @ 2 m, 2001 @ 1 m, 1024 @ 2 m, 2000 @ 1 m, 513 @ 4 m and 256 @ 2 m.
-  - Resizing keeps the map by scaling it or by cropping or padding it 1:1. Undo restores the old size.
-- **Min / Max height**: the range the export spreads its height steps over. Keep it tight for finer steps.
-- **Sea level**, **Auto ocean**, chunk size, vertex size, water preview.
-- **Slopes**: **Steep slope** (default 35°) is the walkable limit used by the Slope view and first person. **First person can't climb steep slopes** (on by default). **Rough look on steep slopes** (on by default) shades steep ground in the 3D preview as broken rock (see below).
-- First person and edge fog settings (below).
-
-**The 3D preview is full resolution**: one vertex per pixel, the exact grid you export, with no reduced detail. **The 2D map is pixel-exact**. **F** fits it, and **=** zooms to one screen pixel per map pixel.
+- **Save / Open:** the project as `.json` (format `terrain-maker-project`, version 1). It also autosaves in the browser. Loading a project rebuilds exactly the same heights.
+- **Import:** a `.bin` or `.h` exported from Terrain Maker (old or new), used in one of two ways:
+  - **Reference:** drawn over the 2D map as an underlay.
+  - **Base layer:** replaces the base sea floor, and the features build on top of it.
+  The imported grid can be any resolution; it is sampled bilinearly. It is not stored in the project file, so import it again after a reload.
+- **Export:** below. Same formats as before.
 
 ## Keys
 
-| Keys | Action |
+| Key | Action |
 |---|---|
-| R L S V P N T C | Raise, Lower, Smooth, Flatten, Ramp, Roughen, Terrace, River |
-| A U | Range, Plateau |
-| B G I M | Biome brush, Fill, Pick, Select |
-| `1`-`9`, `0` | Pick a biome (`1` = Ocean ... `9` = Rock, `0` = Forest) |
-| `[` `]` | Brush size |
-| `,` `.` | Strength |
-| Alt + click | Flatten: sample the height. Biome tools: pick. Select: erase. (On touch, long press.) |
-| H | Height or biome view |
-| K | Contours |
-| J | Slope view |
-| E | Sculpt in 3D |
-| F, `=` | Fit the map, 1:1 zoom |
-| Ctrl+Z, Ctrl+Y (Ctrl+Shift+Z) | Undo, redo |
-| Esc | Cancel the stroke, close a dialog, leave first person |
-| W A S D, Shift, Space | First person: move, sprint, jump |
-
-Mouse and touch:
-- **2D map:** the left mouse or one finger uses the tool. Right or middle drag pans and the wheel zooms. Two fingers pan and pinch-zoom.
-- **3D view:** drag orbits, right drag pans and the wheel zooms. Two fingers pan and zoom.
-
-## First person (Player)
-
-Walk the map at your game's player scale, to judge whether it is big enough.
-
-![First person view](screenshot_fp.png)
-
-1. Press **Player**, then click or tap a spot on the 2D map or in the 3D view. The 3D view becomes the player's eyes, at full resolution.
-2. Look around and walk:
-   - **Desktop:** click the 3D view to capture the mouse for mouse-look (dragging also works). `WASD` or the arrows move, `Shift` sprints, `Space` jumps.
-   - **Touch:** your left thumb is a joystick (push it all the way to sprint). Drag on the right half to look. There is a **Jump** button.
-3. **Esc** or the **Exit first person** button (top right) goes back to the orbit view. **Player** again lets you pick a new spot.
-
-While you walk:
-- **The readout** (top left) shows your position in meters and pixels, the chunk you are in, the ground height and eye height, the biome, any water depth, the distance to the nearest map edge and which edge it is, your compass facing, and the vertical and horizontal FOV.
-- **On the 2D map,** a red dot with your view cone follows you, as it does on the small map in the corner. You can keep sculpting on the 2D map, and the view updates live.
-- **Chunks on** draws chunk lines on the ground.
-- **Movement:**
-  - Your feet follow the exact exported mesh, using the same two triangles per cell.
-  - The map edge is a wall.
-  - Walking off a ledge drops you with gravity.
-- **Steep slopes:** with **First person can't climb steep slopes** on, you can't walk up ground steeper than the Steep slope limit (35°); you slide along it instead, and the readout says "too steep". Walking down is fine, and jumping doesn't get you over it. The readout always shows the slope under you.
-- **Water:**
-  - You wade until the water is deeper than eye height − 0.3 m.
-  - Past that, you swim with your eyes 0.3 m above the surface, at half speed.
-
-**Map settings → First person** (saved with the project):
-
-| Setting | Default | Notes |
-|---|---|---|
-| Eye height | 1.7 m | above the feet |
-| Vertical FOV | 70° | the horizontal equivalent is shown for the 3D view's current shape, 16:9 and 4:3 (70° v = 102° h at 16:9) |
-| Walk speed | 5 m/s | |
-| Sprint multiplier | 2× | Shift, or a fully pushed joystick |
-| Near clip | 0.1 m | |
-| Far clip | 0 = auto | auto is the map's corner-to-corner distance (3094 m for 2048 m), so the whole map is always in view |
-
-## Edge fog
-
-The **Edge fog** button in the 3D view (also in **Map settings**, off by default) fades the terrain and water into a light haze toward the map boundary. That way you don't see a hard edge where the map ends.
-- The fog grows over the last **Fog width** meters (150 m by default), based on each point's distance to the nearest map edge.
-- It stays a little lighter close to you.
-- Beyond the edge, and below the horizon, there is a haze backdrop instead of empty sky.
-- It works in the orbit view and in first person.
-- It is preview only. It is not exported.
-
-## Rough look on steep slopes
-
-![Slope view (left) and the rough look in 3D (right)](screenshot_slope.png)
-
-Two separate things make cliffs read as rock:
-- **Preview shading** (Map settings → **Rough look on steep slopes**, on by default). In the 3D view, land steeper than about the Steep slope limit is tinted rock color and each triangle's lighting is jittered, so it looks like broken, faceted stone. It is **preview only and is not exported**. For rock in the game, use the Rock biome: Auto biome paints it on slopes over the rock angle.
-- **Height facets** (generator → **Rough facets on cliffs**, on by default). The World generator adds a small random height jitter (about 1–2 m at 2 m/px) on faces steeper than about 30°. This is real height, so it is exported.
+| `Ctrl+Z` / `Ctrl+Shift+Z`, `Ctrl+Y` | Undo / redo |
+| `Del` / `Backspace` | Delete the selected control point, or the selected feature |
+| `Ctrl+D` | Duplicate |
+| `R` | Reroll the selected feature |
+| `H` | Hide / show the selected feature |
+| `F` | Fit the map |
+| `Shift` (while dragging) | Snap to the grid / 15° |
+| `Esc` | Cancel placing, deselect, close dialogs |
+| `Ctrl+S` | Save the project |
+| `WASD` / arrows, `Shift` | Walk, run (Walk view) |
 
 ## Export
 
 Every export is the full map: one sample per pixel. Pick one of three data formats. Each format also includes a **water surface grid** at the same scale as the height.
 
-| Format | Height + biome | Water surface | Per sample | Height levels | Data at 1025 × 1025 | Data at 2000 × 2000 |
-|---|---|---|---|---|---|---|
-| `uint16` height + `uint8` biome | 3 B | `uint16` | 5 B | 65536 | 5.0 MB | 19.1 MB |
-| `uint8` height + `uint8` biome | 2 B | `uint8` | 3 B | 256 | 3.0 MB | 11.4 MB |
-| **packed** `uint16` | 2 B | `uint16` (0..4095) | 4 B | 4096 (12 bits) | 4.0 MB | 15.3 MB |
+| Format | Height + biome | Water surface | Per sample | Height levels | .bin at 2 m (1025²) | 1 m (2049²) | 0.5 m (4097²) |
+|---|---|---|---|---|---|---|---|
+| `uint16` height + `uint8` biome | 3 B | `uint16` | 5 B | 65536 | 5.0 MB | 20 MB | 80 MB |
+| `uint8` height + `uint8` biome | 2 B | `uint8` | 3 B | 256 | 3.0 MB | 12 MB | 48 MB |
+| **packed** `uint16` | 2 B | `uint16` (0..4095) | 4 B | 4096 (12 bits) | 4.0 MB | 16 MB | 64 MB |
 
-**Packed:** height in the top 12 bits, biome in the low 4 bits, so `h = v >> 4` (0..4095) and `biome = v & 15`. That allows at most 16 biomes (there are 10). With the default 0 to 200 m range one step is about 5 cm.
+**Packed:** height in the top 12 bits, biome in the low 4 bits, so `h = v >> 4` (0..4095) and `biome = v & 15`. That allows at most 16 biomes (there are 10). Over a 200 m range one step is about 5 cm.
 
 To get meters, multiply any height or water value by `height_scale`, then add `height_offset`:
 
@@ -333,14 +153,14 @@ To get meters, multiply any height or water value by `height_scale`, then add `h
 world_z = height * height_scale + height_offset
 ```
 
-- `height_offset` is the Min height. It is 0 unless you set a Min height below 0.
+- `height_offset` is the Min height. The Export dialog fills Min / Max height from the map's own lowest and highest point (the sea floor is below 0, so it is usually negative).
 - `max_height` is the height range above the offset (Max − Min).
 - `sea_level` is measured above the offset too.
 - `height_scale` is `max_height / 65535`, `/ 255` or `/ 4095` depending on the format.
 
-**Water:** `water[i]` is the water surface in height steps, or 0 where there's no water. A sample is wet when `water[i] > height`, and `depth = (water[i] - height) * height_scale`. Only water biomes are ever wet.
+**Water:** `water[i]` is the water surface in height steps, or 0 where there's no water. A sample is wet when `water[i] > height`, and `depth = (water[i] - height) * height_scale`. River, lake and sea water all count; waterfalls are listed in the features section.
 
-At 8-bit (0.78 m steps over 0 to 200 m), shallow water can round away: the 0.25 m swamp film, and in places the 0.8 m river. Use the 16-bit or packed format if that matters.
+At 8-bit (about 0.9 m steps over a 230 m range), shallow water can round away. Use the 16-bit or packed format if that matters.
 
 ### C header (`<name>.h`)
 
@@ -364,7 +184,7 @@ At 8-bit (0.78 m steps over 0 to 200 m), shallow water can round away: the 0.25 
   - `name_landmark_count` and `float name_landmarks[M][5]`: `{ type, x, y, z, rot }`. type is a `TerrainLandmark` id, z is the world z of the flat pad, and rot is the facing in degrees counter-clockwise from east.
   - With no entries, the array has one zero row; use the count.
 
-A 2000 × 2000 map makes a header of about 30 to 47 MB. It compiles, but for big maps `.bin` is the easier choice.
+The header is text: about 12 MB at 2 m, 47 MB at 1 m and 186 MB at 0.5 m per sample. Above 2 m most compilers struggle, so use the `.bin` for 1 m and 0.5 m maps. Landmarks are not placed by the editor yet, so `landmark_count` is 0.
 
 ### Binary (`<name>.bin`, little-endian, version 2)
 
@@ -429,6 +249,8 @@ Version 1 files (before water) had no table and the data at 64. Read the offsets
 
 The comments in the header spell out the exact layout.
 
-The `.bin` header has no `height_offset` field (the layout is unchanged). If you set a Min height below 0, add it yourself, or read `height_offset` from the `.h`. The Export dialog reminds you when it isn't 0.
+The `.bin` header has no `height_offset` field (the layout is unchanged). Add the Min height yourself, or read `height_offset` from the `.h`. When you import a `.bin` back, the Import dialog asks for it.
 
-Everything is one `index.html`. There is no build step and nothing to install.
+## Development
+
+`index.html` is the whole app. The heavy lifting is in `terrainCore()`, a pure function that runs in a Web Worker and builds the height, water and biome grids for a rectangle. Each feature type is one entry in its type table, so a new type is one more entry plus a drawer button.
