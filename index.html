@@ -863,34 +863,73 @@ function terrainCore() {
     },
   };
 
-  // Shoreline: a closed spline. Inside is land, outside is sea. Sets the coast, beach and
-  // sea floor, and keeps the base ground's gentle roll on the land. Put it at the top of
-  // the tree: it replaces what is under it near the coast.
+  // Shoreline: a closed spline that adds land inside its loop (beach, coast, land height).
+  // The map starts as sea floor; all shorelines are combined first (see Shore Pass), so
+  // overlapping loops merge into one island and tree order does not matter.
+  // Mode "subtract" cuts sea out of the land instead (a lagoon or bay).
+  const shoreK = (f) => clamp(0.3 * f.wid, 20, 80);                        // smooth-union radius
+  const shoreRad = (f) => f.wid + 10 + shoreK(f);
   T.shoreline = {
     kind: "spline", label: "Shoreline", blend: "shore", closedOnly: true,
     def: { wid: 220, hgt: 8, falloff: 0, closed: true, params: { beach: 30, beachH: 1.6, seaDepth: 20, rough: 0.5 } },
-    bbox(f) { return splineBB(f, f.wid + 20 + f.wid * 0.25 * P(f, "rough", 0.5)); },
-    apply(ctx, f, R) {
-      const s = f.seed | 0, beach = Math.max(1, P(f, "beach", 30)), bH = P(f, "beachH", 1.6), sd0 = Math.max(1, P(f, "seaDepth", 20)), rough = P(f, "rough", 0.5);
-      let poly = splinePoly(f.pts, true, 6);
-      poly = wiggle(poly, f.wid * 0.25 * rough, 140, s + 1, false, true);
-      const rad = f.wid + 10, sp = splat(ctx, R, poly, rad), M = insideMask(ctx, R, poly), sea = ctx.p.sea, base = ctx.p.base;
-      let k = 0;
-      each(ctx, R, (i, x, y) => {
-        const d = Math.min(sp.D[k], rad), inn = M[k]; k++;
-        const g = ctx.H[i] - base.h;                                          // the base ground's own roll
-        const fine = 0.25 * perlin(x / 12, y / 12, s + 9);
-        if (inn) {
-          const beachP = bH * sstep(0, beach, d) + fine * sstep(0, 6, d);
-          const land = sstep(beach * 0.6, Math.max(beach + 1, f.wid), d);
-          ctx.H[i] = sea + beachP + (f.hgt + g) * land;
-        } else {
-          const deep = sstep(0, Math.max(10, f.wid), d);
-          ctx.H[i] = sea - 0.4 - (sd0 - 0.4) * deep - d * 0.02 * (1 - deep) * 0 + g * 0.5 * deep + fine;
-        }
-      });
-    },
+    bbox(f) { return splineBB(f, shoreRad(f) + 10 + f.wid * 0.25 * P(f, "rough", 0.5)); },
+    apply() {},                                                             // done in shorePass
   };
+
+  //----- Shore Pass -----||
+  // 1. Signed distance to each coast (+ inside), clamped to its radius.
+  // 2. Union: smooth max of the "shore" loops, then smooth min with the "subtract" loops.
+  // 3. Height: each loop's own profile evaluated at the combined distance, weighted by how
+  //    close the pixel is to that loop; far from every loop the base ground stays.
+  // Local: a loop only touches pixels inside its bbox, so dirty-rect rebuilds still work.
+  const smax = (a, b, k) => { const h = Math.max(k - Math.abs(a - b), 0) / k; return Math.max(a, b) + h * h * k * 0.25; };
+  function shorePass(ctx, Rg, feats) {
+    const shores = feats.filter((f) => f.type === "shoreline");
+    if (!shores.length) return null;
+    shores.sort((a, b) => (a.blend === "subtract") - (b.blend === "subtract"));   // adds first, then cuts
+    const n = ctx.H.length, SD = new Float32Array(n).fill(-1e4), loops = [], timing = {};
+    for (const f of shores) {
+      const t0 = Date.now(), R = clipRect(ctx, T.shoreline.bbox(f));
+      if (!R) continue;
+      const rad = shoreRad(f), k0 = shoreK(f), sub = f.blend === "subtract";
+      const poly = wiggle(splinePoly(f.pts, true, 6), f.wid * 0.25 * P(f, "rough", 0.5), 140, (f.seed | 0) + 1, false, true);
+      const sp = splat(ctx, R, poly, rad), M = insideMask(ctx, R, poly), sd = new Float32Array(sp.D.length);
+      let k = 0;
+      each(ctx, R, (i) => {
+        const d = Math.min(sp.D[k], rad), v = M[k] ? d : -d; sd[k++] = v;
+        SD[i] = sub ? -smax(-SD[i], v, k0) : smax(SD[i], v, k0);
+      });
+      loops.push({ f, R, sd, rad });
+      timing[f.id] = Date.now() - t0;
+    }
+    const NUM = new Float32Array(n), DEN = new Float32Array(n), sea = ctx.p.sea, bh = ctx.p.base.h;
+    for (const L of loops) {
+      const t0 = Date.now(), f = L.f, s = f.seed | 0, sub = f.blend === "subtract";
+      const beach = Math.max(1, P(f, "beach", 30)), bH = P(f, "beachH", 1.6), sd0 = Math.max(1, P(f, "seaDepth", 20)), wid = Math.max(10, f.wid);
+      let k = 0;
+      each(ctx, L.R, (i, x, y) => {
+        const own = L.sd[k++], w = sstep(-L.rad, -L.rad * 0.5, own);
+        if (w <= 0) return;
+        const v = SD[i], g = ctx.H[i] - bh, fine = 0.25 * perlin(x / 12, y / 12, s + 9);
+        let h;
+        if (v > 0) {
+          const beachP = bH * sstep(0, beach, v) + fine * sstep(0, 6, v);
+          h = sea + beachP + (f.hgt + g) * sstep(beach * 0.6, Math.max(beach + 1, wid), v);
+        } else {
+          const deep = sstep(0, wid, -v);
+          h = sea - 0.4 - (sd0 - 0.4) * deep + g * 0.5 * deep + fine;
+        }
+        NUM[i] += w * h; DEN[i] += w;
+      });
+      timing[f.id] += Date.now() - t0;
+    }
+    for (let i = 0; i < n; i++) {
+      const d = DEN[i]; if (d <= 0) continue;
+      const wd = Math.max(0, 1 - d);                                        // the base ground fades in far out
+      ctx.H[i] = (NUM[i] + wd * ctx.H[i]) / (d + wd);
+    }
+    return timing;
+  }
 
   //----- Bounding Boxes -----||
   function featBB(f) {
@@ -965,8 +1004,9 @@ function terrainCore() {
       ctx.H.set(bf);
     }
     const feats = active(p);
-    const timing = {};
+    const timing = shorePass(ctx, Rm, feats) || {};
     for (const f of feats) {
+      if (f.type === "shoreline") continue;
       const fr = clipRect(ctx, featBB(f));
       if (!fr) continue;
       const tf = Date.now();
@@ -1487,14 +1527,14 @@ function renderProps() {
   H3("Blend");
   const bl = document.createElement("select");
   for (const b of BLENDS) { const o = document.createElement("option"); o.value = b; o.textContent = b; bl.appendChild(o); }
-  if (f.type === "shoreline") { bl.innerHTML = "<option>shore</option>"; bl.disabled = true; }
+  if (f.type === "shoreline") bl.innerHTML = "<option>shore</option><option>subtract</option>";
   bl.value = f.blend;
   bl.onchange = () => { pushUndo(); f.blend = bl.value; changed(); };
   row("Mode", bl);
   if (f.blend === "max" || f.blend === "flatten") row("Base Z", num(f.z || 0, 0.5, (v) => { f.z = v; }), "m");
   row("Falloff", num(f.falloff, 1, (v) => { f.falloff = Math.max(0, v); }), "m", "falloff");
   const bn = document.createElement("div"); bn.className = "note";
-  bn.textContent = { add: "add: raises the ground by the shape.", max: "max: ground rises to Base Z + shape, never lowered.", carve: "carve: lowers the ground by the shape.", flatten: "flatten: pulls the ground to Base Z + shape.", shore: "shore: land inside the loop, sea outside." }[f.blend] || "";
+  bn.textContent = { add: "add: raises the ground by the shape.", max: "max: ground rises to Base Z + shape, never lowered.", carve: "carve: lowers the ground by the shape.", flatten: "flatten: pulls the ground to Base Z + shape.", shore: "shore: adds land inside the loop; overlapping shorelines merge into one island.", subtract: "subtract: cuts sea out of the land inside the loop (lagoon, bay)." }[f.blend] || "";
   P.appendChild(bn);
   const keys = Object.keys(f.params || {});
   if (keys.length) {
@@ -3106,6 +3146,7 @@ const HELP_HTML = `<h2>Terrain Maker</h2>
 <li><b>Add</b>: click a type in the drawer, then click the 2D map. It appears with a default shape and is selected.</li>
 <li><b>Select</b>: click it on the map or in the feature tree. <b>Move</b>: drag it (or the diamond). <b>Rotate</b>: the round handle. <b>Scale / stretch</b>: the square handles (length, width, both). Height (Z) is in the panel.</li>
 <li><b>Splines</b> (range, cliff, world edge, valley, river, trail, shoreline): drag the numbered control points. Double-click the curve to insert a point; right-click a point (or select it and press <kbd>Del</kbd>) to delete it. The diamond moves the whole curve, the round handle rotates it, the square scales it.</li>
+<li><b>Shorelines</b>: the map starts as open sea; each shoreline adds land inside its loop. Overlapping shorelines merge into one island (smooth join); set Mode to <i>subtract</i> to cut a lagoon or bay out of the land.</li>
 <li><kbd>Shift</kbd> while dragging snaps to the grid shown (and 15° steps). Middle-drag, Space+drag or drag on empty ground pans; the wheel zooms at the cursor. <kbd>F</kbd> fits the map.</li>
 <li><b>View</b> (top right, <kbd>W</kbd> toggles): <i>Shaded</i> shows the terrain; <i>Outlines</i> shows only the coastline (thick), contours every 10 m and feature outlines, for shaping the island. Everything stays editable.</li>
 <li><b>Reroll</b> (<kbd>R</kbd>) re-randomizes the selected feature only: its size, height, rotation, falloff, shape settings (style, sharpness, ridges, warp, cliff bands, tiers, lean, meander…) and, for paths, a moderate nudge of the inner control points (endpoints stay; loops keep their outline). Each type has its own sensible ranges, e.g. a mountain may come back as a peak, a flat-topped massif with cliff walls, a ridge or a volcano. One undo step. <b>Seed</b> (or <kbd>Shift</kbd>+<kbd>R</kbd>, or Shift-click Reroll) changes only the seed for subtle variation.</li>
@@ -3147,7 +3188,7 @@ function setView(v) {
 
 //----- Input Wiring -----||
 function wire() {
-  $("bNew").onclick = () => { pushUndo(); const p = emptyProject(); p.mpp = proj.mpp; loadProject(p); toast("New project: base sea floor only. Start with a Shoreline. Undo brings the old one back."); };
+  $("bNew").onclick = () => { pushUndo(); const p = emptyProject(); p.mpp = proj.mpp; loadProject(p); toast("New project: open sea. Add a Shoreline to make land. Undo brings the old one back."); };
   $("bOpen").onclick = () => $("fileOpen").click();
   $("fileOpen").onchange = async (e) => {
     const f = e.target.files[0]; e.target.value = ""; if (!f) return;
