@@ -50,7 +50,11 @@ h3 { margin:10px 10px 6px; font-size:11px; letter-spacing:.08em; text-transform:
 /*----- Properties -----||*/
 .row { display:grid; grid-template-columns:96px 1fr; align-items:center; gap:6px; margin:4px 0; }
 .row label { color:var(--dim); }
-.row .two { display:flex; gap:4px; }
+.row .two { display:flex; gap:4px; align-items:center; min-width:0; }
+.row .two > input, .row .two > select { flex:1 1 auto; min-width:0; width:0; }
+.row .two > input[type=checkbox] { flex:0 0 auto; width:auto; }
+.row .two > input[type=number] { min-width:64px; }
+.row .two > button { flex:0 0 auto; padding:2px 6px; }
 .row .unit { color:var(--dim); font-size:11px; margin-left:2px; }
 .row .lk { margin-left:auto; padding:0 3px; min-width:0; font-size:11px; line-height:16px; background:none; border-color:transparent; opacity:.45; filter:grayscale(1); }
 .row .lk.on { opacity:1; filter:none; border-color:var(--line); }
@@ -1456,7 +1460,7 @@ function renderProps() {
   rr.onclick = (ev) => rerollSel(ev.shiftKey); sd.appendChild(rr);
   const rs = document.createElement("button"); rs.textContent = "Seed"; rs.title = "Reroll the seed only: subtle variation, same size and shape (Shift+R)";
   rs.onclick = () => rerollSel(true); sd.appendChild(rs);
-  row("Seed", sd, "", "seed");
+  row("Seed", sd);
   const hid = document.createElement("input"); hid.type = "checkbox"; hid.checked = !!f.hidden;
   hid.onchange = () => { pushUndo(); f.hidden = hid.checked; changed(); };
   row("Suppressed", hid);
