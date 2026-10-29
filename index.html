@@ -1573,14 +1573,14 @@ const ROLL = {
   lake: { size: { len: [0.75, 1.35], wid: [0.75, 1.35], hgt: [0.6, 1.8] }, rot: 90, falloff: [15, 50], pos: 0.1, params: { warp: [0.1, 1.1], shore: [0.15, 0.6] } },
   // the waterfall never moves or turns: it has to stay on its drop
   waterfall: { size: { wid: [0.6, 1.6], hgt: [0.6, 2] }, params: { reach: [15, 45] } },
-  range: { size: { wid: [0.75, 1.3], hgt: [0.6, 1.4] }, falloff: [30, 120], pts: 0.12,
+  range: { size: { wid: [0.75, 1.3], hgt: [0.6, 1.4] }, falloff: [30, 120], path: 0.1, pts: 0.12,
     params: { peaks: pick([2, 3, 4, 5, 6, 7, 8, 9]), sharp: [0.2, 1], spurs: [0.2, 1], wiggle: [0.1, 0.9], flat: pick([0, 0, 0, 0.4, 0.6, 0.8, 1]) } },
-  cliff: { size: { wid: [0.7, 1.5], hgt: [0.6, 1.6] }, pts: 0.1, params: { lean: [0, 25], rough: [0.2, 1.1], strata: pick([0, 1, 2, 3, 4, 5, 6]) } },
+  cliff: { size: { wid: [0.7, 1.5], hgt: [0.6, 1.6] }, path: 0.08, pts: 0.1, params: { lean: [0, 25], rough: [0.2, 1.1], strata: pick([0, 1, 2, 3, 4, 5, 6]) } },
   worldedge: { size: { hgt: [0.9, 1.3] }, pts: 0.04, params: { lean: [0, 10], rough: [0.3, 1.2], strata: pick([2, 3, 4, 5, 6, 7, 8, 9]) } },
-  valley: { size: { wid: [0.7, 1.4], hgt: [0.6, 1.6] }, pts: 0.12, params: { floor: [0.05, 0.6], steep: [0, 1], rough: [0.1, 0.8], wiggle: [0.1, 0.8] } },
+  valley: { size: { wid: [0.7, 1.4], hgt: [0.6, 1.6] }, path: 0.1, pts: 0.12, params: { floor: [0.05, 0.6], steep: [0, 1], rough: [0.1, 0.8], wiggle: [0.1, 0.8] } },
   // the bed never rises downstream (the river code), so any nudge still flows downhill
-  river: { size: { wid: [0.7, 1.5], hgt: [0.7, 1.6] }, pts: 0.1, params: { bank: [12, 50], meander: [0.15, 1.2], water: [1, 2.4], gorge: [0, 0.8] } },
-  trail: { size: { wid: [0.8, 1.4] }, falloff: [3, 12], pts: 0.05, params: { smooth: [20, 90] } },
+  river: { size: { wid: [0.7, 1.5], hgt: [0.7, 1.6] }, path: 0.12, pts: 0.1, params: { bank: [12, 50], meander: [0.15, 1.2], water: [1, 2.4], gorge: [0, 0.8] } },
+  trail: { size: { wid: [0.8, 1.4] }, falloff: [3, 12], path: 0.04, pts: 0.05, params: { smooth: [20, 90] } },
   shoreline: { size: { wid: [0.8, 1.3], hgt: [0.7, 1.5] }, pts: 0.07, params: { beach: [12, 50], beachH: [0.8, 2.5], seaDepth: [12, 35], rough: [0.2, 1] } },
 };
 function isLocked(f, k) { return k === "pos" ? !(f.locks && f.locks.pos === false) : !!(f.locks && f.locks[k]); }
@@ -1616,9 +1616,118 @@ function rerollFeature(f, seedOnly) {
     const m = Math.min(f.len, f.wid) * R.pos;
     f.x = Math.round(base.x + (rnd() * 2 - 1) * m); f.y = Math.round(base.y + (rnd() * 2 - 1) * m);
   }
-  if (R.pts && f.pts && !isLocked(f, "pts")) f.pts = nudgePts(base.pts, !!f.closed || f.type === "shoreline", R.pts, rnd);
+  if (R.pts && f.pts && !isLocked(f, "pts")) {
+    if (f.type === "shoreline") f.pts = newIsland(f, base.pts, rnd);
+    else if (R.path && !f.closed) f.pts = newPath(base.pts, R.path, rnd);
+    else f.pts = nudgePts(base.pts, !!f.closed, R.pts, rnd);
+  }
   for (const k of keys) if (f[k] !== undefined) out[k] = JSON.parse(JSON.stringify(f[k]));
   f.rollBase = base; f.rollOut = out;
+}
+//----- Island Recipes -----||
+// A shoreline reroll draws a new coastline around the same centre with about the same
+// area (x0.8-1.2) and an archetype picked at random. The radius is a function of angle:
+// layered angular noise (low lobes, mid bays, small wiggles) times the archetype's shape,
+// plus 0-3 coves, then a random rotation and stretch. Radii at evenly spaced angles keep
+// the control polygon simple (star-shaped); the final curve (with the roughness wiggle)
+// is checked for crossings and narrow necks, and redrawn calmer if it fails.
+const ISLANDS = [["blob", 2], ["elongated", 2], ["crescent", 1.5], ["peninsula", 1.5], ["twolobe", 1.5], ["jagged", 1.5]];
+let lastIsland = "";
+function polyArea(pts) { let a = 0; for (let i = 0; i < pts.length; i++) { const p = pts[i], q = pts[(i + 1) % pts.length]; a += p[0] * q[1] - q[0] * p[1]; } return Math.abs(a) / 2; }
+function islandRadii(kind, n, rnd, calm) {
+  const TAU = Math.PI * 2, g = (d, w) => Math.exp(-(d / w) * (d / w)), dAng = (a, b) => { let d = (a - b) % TAU; if (d > Math.PI) d -= TAU; if (d < -Math.PI) d += TAU; return d; };
+  const oct = [];
+  for (let k = 2; k <= 3; k++) oct.push([k, (0.1 + 0.14 * rnd()) * calm, rnd() * TAU]);
+  for (let k = 4; k <= 7; k++) oct.push([k, (kind === "jagged" ? 0.08 : 0.05) * (0.3 + 0.7 * rnd()) * calm, rnd() * TAU]);
+  for (let k = 9; k <= 14; k += 1 + (rnd() * 2 | 0)) oct.push([k, (kind === "jagged" ? 0.025 : 0.012) * rnd() * calm, rnd() * TAU]);
+  const cuts = [], bumps = [], a0 = rnd() * TAU;
+  if (kind === "crescent") { cuts.push([a0, 0.55 + 0.15 * rnd(), 0.55 + 0.25 * rnd()]); bumps.push([a0 + 0.9, 0.2, 0.3], [a0 - 0.9, 0.2, 0.3]); }
+  if (kind === "peninsula") bumps.push([a0, 0.55 + 0.35 * rnd(), 0.18 + 0.1 * rnd()]);
+  if (kind === "jagged") for (let i = 0, m = 2 + (rnd() * 3 | 0); i < m; i++) cuts.push([rnd() * TAU, 0.3 + 0.25 * rnd(), 0.06 + 0.05 * rnd()]);
+  for (let i = 0, m = 1 + (rnd() * 3 | 0); i < m; i++) cuts.push([rnd() * TAU, 0.18 + 0.22 * rnd(), 0.1 + 0.15 * rnd()]);     // coves
+  const r = [];
+  for (let i = 0; i < n; i++) {
+    const th = i / n * TAU;
+    let v = 1;
+    for (const [k, a, ph] of oct) v += a * Math.sin(k * th + ph);
+    if (kind === "twolobe") v *= 0.55 + 0.6 * Math.pow(Math.abs(Math.cos(th - a0)), 0.7);
+    for (const [c, d, w] of bumps) v *= 1 + d * g(dAng(th, c), w);
+    for (const [c, d, w] of cuts) v *= 1 - d * calm * g(dAng(th, c), w);
+    r.push(Math.max(0.3, v));
+  }
+  return r;
+}
+// Narrowest neck: closest pair of curve points that are far apart along the curve.
+function curveCheck(xy, minW) {
+  const m = xy.length / 2 - 1, step = Math.max(1, Math.floor(m / 220)), P = [];
+  for (let i = 0; i < m; i += step) P.push([xy[2 * i], xy[2 * i + 1]]);
+  const n = P.length, cum = [0];
+  for (let i = 1; i < n; i++) cum.push(cum[i - 1] + Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]));
+  const L = cum[n - 1] + Math.hypot(P[0][0] - P[n - 1][0], P[0][1] - P[n - 1][1]);
+  const segX2 = (a, b, c, d) => { const o = (p, q, r) => Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])); return o(a, b, c) * o(a, b, d) < 0 && o(c, d, a) * o(c, d, b) < 0; };
+  for (let i = 0; i < n; i++) for (let j = i + 2; j < n; j++) {
+    if (i === 0 && j === n - 1) continue;
+    if (segX2(P[i], P[(i + 1) % n], P[j], P[(j + 1) % n])) return "cross";
+    const along = Math.min(cum[j] - cum[i], L - (cum[j] - cum[i]));
+    if (along > minW * 3 && Math.hypot(P[i][0] - P[j][0], P[i][1] - P[j][1]) < minW) return "neck";
+  }
+  return "";
+}
+function newIsland(f, basePts, rnd, out) {
+  const n0 = basePts.length; let cx = 0, cy = 0; for (const q of basePts) { cx += q[0]; cy += q[1]; } cx /= n0; cy /= n0;
+  const A0 = polyArea(basePts), size = proj.size, TAU = Math.PI * 2;
+  const bmin = [Math.min(...basePts.map((q) => q[0])), Math.min(...basePts.map((q) => q[1]))], bmax = [Math.max(...basePts.map((q) => q[0])), Math.max(...basePts.map((q) => q[1]))];
+  let tot = 0; for (const [, w] of ISLANDS) tot += w;
+  let u = rnd() * tot, kind = ISLANDS[0][0]; for (const [k, w] of ISLANDS) { if ((u -= w) <= 0) { kind = k; break; } }
+  const fill = A0 / Math.max(1, (size - 2 * (f.wid + 40)) ** 2);           // a base that fills the map leaves no room to grow
+  const n = 24 + (rnd() * 25 | 0), rot = rnd() * TAU, area = A0 * (fill > 0.55 ? 0.75 + 0.15 * rnd() : 0.8 + 0.4 * rnd());
+  let sx = kind === "elongated" ? 1.45 + 0.45 * rnd() : kind === "twolobe" ? 1.15 + 0.3 * rnd() : 1 + 0.35 * rnd();
+  for (let attempt = 0, calm = 1; attempt < 8; attempt++, calm *= 0.75) {
+    const r = islandRadii(kind, n, rnd, calm);
+    let pts = r.map((v, i) => { const th = i / n * TAU, x = Math.cos(th) * v * sx, y = Math.sin(th) * v / sx; return [x * Math.cos(rot) - y * Math.sin(rot), x * Math.sin(rot) + y * Math.cos(rot)]; });
+    // stay on the map (about as far out as the base outline reaches): tips that stick out
+    // are pressed softly against the bounds (a coast running along the edge), then the
+    // whole shape grows a little to win the area back
+    const lo = [0, 1].map((a) => clamp(Math.min(f.wid + 40, bmin[a] - 20), 40, size / 2)), hi = [0, 1].map((a) => clamp(Math.max(size - f.wid - 40, bmax[a] + 20), size / 2, size - 40));
+    const smin = (a, b, w) => -w * Math.log(Math.exp(-a / w) + Math.exp(-b / w));
+    const unit = pts, k0 = Math.sqrt(area / Math.max(1e-6, polyArea(pts))); let k = k0;
+    for (let it = 0; it < 4; it++) {
+      pts = unit.map((q) => [0, 1].map((a) => { const c = a ? cy : cx, v = c + q[a] * k; return Math.round(-smin(-smin(v, hi[a], 50), -lo[a], 50)); }));
+      const got = polyArea(pts); if (got >= area * 0.97) break;
+      if (k >= k0 * 1.15) break;
+      k = Math.min(k0 * 1.15, k * Math.sqrt(area / Math.max(1, got)));
+    }
+    const g = Object.assign({}, f, { pts }), err = curveCheck(CORE.polyOf(g).xy, Math.max(60, f.wid * 0.6));
+    if (out) out.tries = attempt + 1;
+    if (!err) { lastIsland = kind; if (out) out.kind = kind; return pts; }
+    if (attempt === 5) kind = "blob";
+  }
+  if (out) out.failed = true;
+  return nudgePts(basePts, true, 0.07, rnd);
+}
+//----- Path Recipes -----||
+// Open splines get a new course between their fixed endpoints: sideways offsets made of
+// sin(m*pi*t) terms (zero at both ends) with random amplitudes, i.e. new meanders of random
+// wavelength, sometimes one big extra bend. amp = the largest offset as a fraction of the
+// path length. Points are re-placed along the base curve (base count, rivers +0-3).
+function newPath(basePts, amp, rnd) {
+  const P = CORE.splinePoly(basePts, false, 4), xy = P.xy, m = xy.length / 2, L = P.len || 1;
+  const terms = [];
+  if (rnd() < 0.5) terms.push([1 + (rnd() * 2 | 0), (rnd() * 2 - 1) * 0.8]);                 // extra bend
+  for (let i = 0, c = 1 + (rnd() * 3 | 0); i < c; i++) terms.push([2 + (rnd() * 5 | 0), (rnd() * 2 - 1) * 0.45]);
+  let mx = 0; const off = (t) => { let v = 0; for (const [k, a] of terms) v += a * Math.sin(k * Math.PI * t); return v; };
+  for (let i = 0; i <= 50; i++) mx = Math.max(mx, Math.abs(off(i / 50)));
+  const sc = amp * L * (0.5 + 0.5 * rnd()) / Math.max(0.3, mx);
+  const cnt = Math.max(basePts.length, Math.min(14, basePts.length + (rnd() * 4 | 0))), pts = [];
+  for (let j = 0; j < cnt; j++) {
+    const t = j / (cnt - 1), s = t * L;
+    let i = 0; while (i < m - 2 && P.cum[i + 1] < s) i++;
+    const u = P.cum[i + 1] > P.cum[i] ? (s - P.cum[i]) / (P.cum[i + 1] - P.cum[i]) : 0;
+    const x = xy[2 * i] + (xy[2 * i + 2] - xy[2 * i]) * u, y = xy[2 * i + 1] + (xy[2 * i + 3] - xy[2 * i + 1]) * u;
+    const tx = xy[2 * i + 2] - xy[2 * i], ty = xy[2 * i + 3] - xy[2 * i + 1], tl = Math.hypot(tx, ty) || 1, o = off(t) * sc;
+    pts.push(j === 0 ? [...basePts[0]] : j === cnt - 1 ? [...basePts[basePts.length - 1]] : [Math.round(x - ty / tl * o), Math.round(y + tx / tl * o)]);
+  }
+  return pts;
 }
 // Splines: open curves keep both endpoints and move the inner points sideways by up to
 // amp x the local spacing; closed loops scale each point's distance from the centre by
@@ -1643,7 +1752,7 @@ function rerollSel(seedOnly) {
   pushUndo();
   rerollFeature(f, seedOnly);
   // waterfalls on a rerolled river or wall follow its new crossing
-  if (!seedOnly && f.pts) for (const w of proj.features) if (w.type === "waterfall") snapWaterfall(w, 90);
+  if (!seedOnly && f.pts) for (const w of proj.features) if (w.type === "waterfall") snapWaterfall(w, 250);
   changed();
 }
 function centroid(f) {
@@ -3133,6 +3242,7 @@ function boot() {
 window.TM = {
   get proj() { return proj; }, get H() { return H; }, get WS() { return WS; }, get B() { return B; }, get N() { return N; }, get META() { return META; },
   get last() { return WM.last; }, get stats3() { return stats3; }, get sel() { return sel; }, V2, CAM, WALK, w2s, s2w, render3D, request3D, gizmoOf,
+  newIsland, curveCheck, mulberry, get lastIsland() { return lastIsland; },
   whenBuilt, loadProject, changed, select, setView, buildBin, buildExportH, readGameFile, applyImport, rerollSel, featById, pushUndo, undo, redo, snapWaterfall, fitView, draw2D,
   setMpp(v) { proj.mpp = v; setGrid(); changed(); return whenBuilt(); },
   bench3D(n) { const t = []; for (let k = 0; k < n; k++) { const a = performance.now(); render3D(); gl.finish(); t.push(performance.now() - a); } t.sort((a, b) => a - b); return { median: t[t.length >> 1], min: t[0], max: t[t.length - 1], stats: stats3 }; },
