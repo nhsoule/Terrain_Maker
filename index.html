@@ -50,8 +50,14 @@ h3 { margin:10px 10px 6px; font-size:11px; letter-spacing:.08em; text-transform:
 /*----- Properties -----||*/
 .row { display:grid; grid-template-columns:96px 1fr; align-items:center; gap:6px; margin:4px 0; }
 .row label { color:var(--dim); }
-.row .two { display:flex; gap:4px; }
+.row .two { display:flex; gap:4px; align-items:center; min-width:0; }
+.row .two > input, .row .two > select { flex:1 1 auto; min-width:0; width:0; }
+.row .two > input[type=checkbox] { flex:0 0 auto; width:auto; }
+.row .two > input[type=number] { min-width:64px; }
+.row .two > button { flex:0 0 auto; padding:2px 6px; }
 .row .unit { color:var(--dim); font-size:11px; margin-left:2px; }
+.row .lk { margin-left:auto; padding:0 3px; min-width:0; font-size:11px; line-height:16px; background:none; border-color:transparent; opacity:.45; filter:grayscale(1); }
+.row .lk.on { opacity:1; filter:none; border-color:var(--line); }
 .pts { width:100%; border-collapse:collapse; font-size:12px; }
 .pts td { padding:1px 2px; } .pts input { width:100%; }
 .pts tr.sel td { background:#3a3220; }
@@ -455,10 +461,15 @@ function terrainCore() {
   }
   T.mountain = {
     kind: "point", label: "Mountain", blend: "add",
-    def: { len: 700, wid: 560, hgt: 220, falloff: 60, params: { sharp: 0.6, ridges: 0.6, warp: 0.5, detail: 0.5 } },
+    def: { len: 700, wid: 560, hgt: 220, falloff: 60, params: { style: 0, sharp: 0.6, ridges: 0.6, warp: 0.5, detail: 0.5, cliffs: 0.6, crater: 0.25, bands: 0 } },
+    // style: 0 peak, 1 massif (level top, cliff walls on some sides, ramps on others),
+    // 2 ridge (a crest along the length), 3 volcanic cone with a caldera.
+    // bands: cliff bands / ledges stepped into the flanks (0 = none).
     bbox: (f) => pointBB(f, 1.12),
     apply(ctx, f, R) {
-      const s = f.seed | 0, sharp = P(f, "sharp", 0.6), rid = P(f, "ridges", 0.6), warp = P(f, "warp", 0.5), det = P(f, "detail", 0.5);
+      const s = f.seed | 0, sharp = P(f, "sharp", 0.6), warp = P(f, "warp", 0.5), det = P(f, "detail", 0.5);
+      const style = Math.round(P(f, "style", 0)), cliffs = P(f, "cliffs", 0.6), crater = clamp(P(f, "crater", 0.25), 0.05, 0.6), bands = Math.round(P(f, "bands", 0));
+      const rid = P(f, "ridges", 0.6) * (style === 1 ? 0.25 : style === 3 ? 0.6 : 1);
       const rm = minR(f), wave = Math.max(f.len, f.wid) * 0.45, fo = Math.max(1, f.falloff);
       // the summit sits off-centre by the seed, so rerolls change the silhouette
       const pu = noise1(1.7, s) * 0.25, pv = noise1(4.1, s) * 0.25;
@@ -466,15 +477,32 @@ function terrainCore() {
       const WV = coarse(ctx, R, 4, (x, y) => warp * 0.35 * fbm(x, y, s + 23, wave, 3));
       const RD = coarse(ctx, R, 2, (x, y) => ridged(x + warp * 0.35 * rm * fbm(x, y, s + 11, wave, 2), y + warp * 0.35 * rm * fbm(x, y, s + 23, wave, 2), s + 37, wave * 0.55, 5, 10));
       eachLocalArr(ctx, f, R, (i, k, u, v, x, y) => {
-        const c0 = 1 - Math.min(1, Math.hypot(u, v));
-        const du = u + WU[k] - pu * c0, dv = v + WV[k] - pv * c0, r = Math.hypot(du, dv);
+        const c0 = 1 - Math.min(1, Math.hypot(u, v)), off = style === 0 || style === 2 ? 1 : 0;
+        const du = u + WU[k] - pu * c0 * off, dv = v + WV[k] - pv * c0 * off;
+        const r = style === 2 ? Math.hypot(Math.max(0, Math.abs(du) - 0.5) / 0.5, dv) : Math.hypot(du, dv);
         if (r >= 1) return;
         const t = 1 - r;
         let base = Math.pow(t, 1 + sharp * 0.9) * (0.6 + 0.4 * t) + 0.12 * sstep(0, 0.6, t) * t;   // concave flanks, broad shoulders
+        if (style === 1) {
+          //----- Massif profile -----||
+          // (from the legacy generator) a level top (r < 0.55), then around the edge either a
+          // cliff wall (drops to 35% in a short band, then foothills) or a long even ramp.
+          const an = Math.atan2(dv, du);
+          const cs = sstep(-0.08, 0.08, perlin(Math.cos(an) * 1.3, Math.sin(an) * 1.3, s + 311) + (cliffs - 0.5) * 0.5);
+          const ramp = r < 0.55 ? 1 : 1 - sstep(0.55, 1, r);
+          const wall = r < 0.55 ? 1 : r < 0.63 ? 1 - 0.65 * sstep(0.55, 0.63, r) : 0.35 * (1 - sstep(0.63, 1, r));
+          base = (ramp + (wall - ramp) * cs) * (0.97 + 0.05 * fbm(x, y, s + 13, wave * 0.6, 3));
+        } else if (style === 2) base *= 0.8 + 0.2 * noise1(du * 1.7, s + 5);       // summits + saddles along the crest
+        else if (style === 3) {
+          // volcanic cone: straight-ish flanks, a rim at r = crater, a sunken caldera floor
+          const cone = Math.pow(t, 0.8 + sharp * 0.5), rimH = Math.pow(1 - crater, 0.8 + sharp * 0.5);
+          base = r < crater ? rimH * (0.55 + 0.45 * sstep(crater * 0.45, crater, r)) : cone;
+        }
         // spurs radiate from the summit: noise sampled around a circle, stretched outward
         const th = Math.atan2(dv, du) + 1.5 * (WU[k] - WV[k]), K = 1.1 + 0.9 * rid, sc = K * (1 + 0.6 * r);
         const rad = ridged(Math.cos(th) * sc, Math.sin(th) * sc, s + 71, 1, 3);
         let hgt = base * (1 - rid * 0.5 + rid * (0.4 * RD[k] + 0.45 * rad * sstep(0.03, 0.35, r)));
+        if (bands > 0) hgt = hgt + (terrace(Math.max(0, hgt), bands + 1, 0.3) - hgt) * 0.8 * sstep(0, 0.15, t);   // cliff bands
         const fine = det * 1.6 * fbm(x, y, s + 53, 9, 2, 3) * sstep(0, 0.3, t);                    // meters of rock texture
         blendAt(ctx.H, i, f.blend, Math.max(0, hgt) * f.hgt + fine, sstep(0, fo, t * rm), f.z || 0);
       });
@@ -518,11 +546,14 @@ function terrainCore() {
 
   T.plateau = {
     kind: "point", label: "Plateau / mesa", blend: "max",
-    def: { len: 520, wid: 400, hgt: 70, falloff: 0, z: 0, params: { side: 30, ledges: 2, warp: 0.6, talus: 25 } },
+    def: { len: 520, wid: 400, hgt: 70, falloff: 0, z: 0, params: { side: 30, ledges: 2, warp: 0.6, talus: 25, tiers: 1 } },
+    // tiers: stacked mesas, each level smaller and off-centre (from the legacy tier clusters)
     bbox: (f) => pointBB(f, 1.35),
     apply(ctx, f, R) {
       const s = f.seed | 0, side = Math.max(1, P(f, "side", 30)), ledges = Math.round(P(f, "ledges", 2)), warp = P(f, "warp", 0.6), talus = P(f, "talus", 25);
-      const rm = minR(f), wave = rm * 0.9;
+      const rm = minR(f), wave = rm * 0.9, tiers = clamp(Math.round(P(f, "tiers", 1)), 1, 4);
+      const TU = [], TV = [], TK = [];
+      for (let q = 1; q < tiers; q++) { TU.push(noise1(q * 3.1, s + 41) * 0.24 * q / tiers); TV.push(noise1(q * 5.3, s + 43) * 0.24 * q / tiers); TK.push(1 - q * 0.62 / tiers); }
       eachLocal(ctx, f, R, (i, u, v, x, y) => {
         const r = Math.hypot(u, v), a = Math.atan2(v, u);
         // outline radius wobbles with angle (seamless: noise sampled on a circle) plus fine cracks
@@ -534,7 +565,16 @@ function terrainCore() {
         let p;
         if (d >= 0) p = 0.12 + 0.88 * terrace(sstep(0, 1, face), ledges + 1, 0.7);
         else { const ft = clamp((d + talus) / Math.max(1, talus), 0, 1); p = 0.12 * ft * ft; }
-        const top = sstep(0.95, 1, face) * 0.025 * fbm(x, y, s + 29, 60, 4, 4);
+        let top = sstep(0.95, 1, face) * 0.025 * fbm(x, y, s + 29, 60, 4, 4);
+        if (tiers > 1) {
+          p /= tiers;
+          for (let q = 1; q < tiers; q++) {
+            const uq = u - TU[q - 1], vq = v - TV[q - 1], aq = Math.atan2(vq, uq);
+            const eq = TK[q - 1] * (1 + warp * 0.2 * perlin(Math.cos(aq) * 1.8, Math.sin(aq) * 1.8, s + 100 * q));
+            const dq = (eq - Math.hypot(uq, vq)) * rm;
+            if (dq > 0) { const fq = clamp(dq / side, 0, 1); p += terrace(sstep(0, 1, fq), ledges + 1, 0.7) / tiers; if (fq < 1) top = 0; }
+          }
+        }
         blendAt(ctx.H, i, f.blend, (p + top) * f.hgt, 1, f.z || 0);
       });
     },
@@ -646,7 +686,8 @@ function terrainCore() {
 
   T.range = {
     kind: "spline", label: "Mountain range", blend: "add",
-    def: { wid: 420, hgt: 240, falloff: 60, params: { peaks: 5, sharp: 0.6, spurs: 0.6, wiggle: 0.4 } },
+    def: { wid: 420, hgt: 240, falloff: 60, params: { peaks: 5, sharp: 0.6, spurs: 0.6, wiggle: 0.4, flat: 0 } },
+    // flat: 0 sharp crest .. 1 massif-like level top with steep walls
     rad: (f) => f.wid / 2 * 1.35 + f.wid * 0.25 * P(f, "wiggle", 0.4),
     bbox(f) { return splineBB(f, this.rad(f)); },
     apply(ctx, f, R) {
@@ -671,7 +712,9 @@ function terrainCore() {
         const q = d / hw + SP[kk];
         if (q >= 1.3) return;
         const tt = Math.max(0, 1 - q / 1.3);
-        const prof = Math.pow(tt, 1 + sharp);
+        let prof = Math.pow(tt, 1 + sharp);
+        const flat = P(f, "flat", 0);
+        if (flat > 0) prof += (sstep(0.05, 0.05 + 0.5 * (1 - flat * 0.7), tt) * (0.85 + 0.15 * tt) - prof) * flat;
         // gullies and spurs run down the flanks, across the crest: ridged noise stretched
         // along the curve (t) vs across it (signed distance)
         const gul = ridged(t / 80, d / 160, s + 61, 1, 2);
@@ -1028,6 +1071,8 @@ const PARAMS = {
   floor: ["Floor width", "", 0.05, 0, 0.9], steep: ["Steepness", "", 0.05, 0, 1],
   bank: ["Bank width", "m", 1, 0, 200], meander: ["Meander", "", 0.05, 0, 2], water: ["Water depth", "m", 0.1, 0.1, 10], gorge: ["Gorge", "", 0.05, 0, 1],
   smooth: ["Grade smoothing", "m", 1, 0, 400], ramp: ["Ramp (0 = follow)", "", 0.05, 0, 1],
+  style: ["Style", "", 1, 0, 3], cliffs: ["Cliff walls (massif)", "", 0.05, 0, 1], crater: ["Caldera (volcano)", "", 0.01, 0.05, 0.6], bands: ["Cliff bands", "", 1, 0, 8],
+  tiers: ["Tiers", "", 1, 1, 4], flat: ["Flat top", "", 0.05, 0, 1],
   beach: ["Beach width", "m", 1, 0, 200], beachH: ["Beach height", "m", 0.1, 0, 10], seaDepth: ["Sea depth", "m", 1, 1, 200],
 };
 // What the X/Y/Z scales mean per type (meters).
@@ -1359,11 +1404,12 @@ function deleteSel() {
 function renderProps() {
   const P = $("props"); P.innerHTML = "";
   const H3 = (t) => { const h = document.createElement("h3"); h.textContent = t; P.appendChild(h); };
-  const row = (label, el, unit) => {
+  const row = (label, el, unit, lockKey) => {
     const r = document.createElement("div"); r.className = "row";
     const l = document.createElement("label"); l.textContent = label; r.appendChild(l);
     const w = document.createElement("div"); w.className = "two"; w.appendChild(el);
     if (unit) { const u = document.createElement("span"); u.className = "unit"; u.textContent = unit; w.appendChild(u); }
+    if (lockKey) w.appendChild(lockBtn(featById(sel), lockKey));
     r.appendChild(w); P.appendChild(r); return r;
   };
   const num = (val, step, on, o) => {
@@ -1410,17 +1456,19 @@ function renderProps() {
   row("Name", nm);
   const sd = document.createElement("div"); sd.className = "two";
   sd.appendChild(num(f.seed, 1, (v) => { f.seed = v | 0; }));
-  const rr = document.createElement("button"); rr.textContent = "Reroll"; rr.title = "New random seed for this feature only (R)";
-  rr.onclick = () => rerollSel(); sd.appendChild(rr);
+  const rr = document.createElement("button"); rr.textContent = "Reroll"; rr.title = "Randomize this feature's size, shape and seed; locked rows are kept (R). Shift-click: seed only";
+  rr.onclick = (ev) => rerollSel(ev.shiftKey); sd.appendChild(rr);
+  const rs = document.createElement("button"); rs.textContent = "Seed"; rs.title = "Reroll the seed only: subtle variation, same size and shape (Shift+R)";
+  rs.onclick = () => rerollSel(true); sd.appendChild(rs);
   row("Seed", sd);
   const hid = document.createElement("input"); hid.type = "checkbox"; hid.checked = !!f.hidden;
   hid.onchange = () => { pushUndo(); f.hidden = hid.checked; changed(); };
   row("Suppressed", hid);
   H3("Placement");
   if (t.kind === "point") {
-    row("Position X", num(f.x, 1, (v) => { f.x = v; }), "m");
-    row("Position Y", num(f.y, 1, (v) => { f.y = v; }), "m");
-    row("Rotation", num(f.rot, 1, (v) => { f.rot = v; }), "°");
+    row("Position X", num(f.x, 1, (v) => { f.x = v; }), "m", "pos");
+    row("Position Y", num(f.y, 1, (v) => { f.y = v; }), "m", "pos");
+    row("Rotation", num(f.rot, 1, (v) => { f.rot = v; }), "°", f.type === "waterfall" ? "" : "rot");
   } else {
     const c = centroid(f);
     row("Center X", num(c[0], 1, (v) => { const d = v - c[0]; f.pts = f.pts.map((q) => [q[0] + d, q[1]]); }, { rerender: true }), "m");
@@ -1434,7 +1482,7 @@ function renderProps() {
   const lab = SCALE_LABEL[f.type] || {};
   for (const [k, l] of SCALES[t.kind]) {
     if (f.type === "trail" && k === "hgt") continue;
-    row(lab[k] || l, num(f[k], k === "hgt" ? 0.5 : 1, (v) => { f[k] = Math.max(k === "hgt" ? 0 : 1, v); }, { min: 0 }), "m");
+    row(lab[k] || l, num(f[k], k === "hgt" ? 0.5 : 1, (v) => { f[k] = Math.max(k === "hgt" ? 0 : 1, v); }, { min: 0 }), "m", k);
   }
   H3("Blend");
   const bl = document.createElement("select");
@@ -1444,7 +1492,7 @@ function renderProps() {
   bl.onchange = () => { pushUndo(); f.blend = bl.value; changed(); };
   row("Mode", bl);
   if (f.blend === "max" || f.blend === "flatten") row("Base Z", num(f.z || 0, 0.5, (v) => { f.z = v; }), "m");
-  row("Falloff", num(f.falloff, 1, (v) => { f.falloff = Math.max(0, v); }), "m");
+  row("Falloff", num(f.falloff, 1, (v) => { f.falloff = Math.max(0, v); }), "m", "falloff");
   const bn = document.createElement("div"); bn.className = "note";
   bn.textContent = { add: "add: raises the ground by the shape.", max: "max: ground rises to Base Z + shape, never lowered.", carve: "carve: lowers the ground by the shape.", flatten: "flatten: pulls the ground to Base Z + shape.", shore: "shore: land inside the loop, sea outside." }[f.blend] || "";
   P.appendChild(bn);
@@ -1454,11 +1502,19 @@ function renderProps() {
     for (const k of keys) {
       const d = PARAMS[k] || [k, "", 0.05];
       if (f.type === "cliff" || f.type === "worldedge") { if (k === "side") { addSide(f, row); continue; } }
-      row(d[0], num(f.params[k], d[2], (v) => { f.params[k] = d[3] !== undefined ? clamp(v, d[3], d[4]) : v; }), d[1]);
+      if (k === "style" && f.type === "mountain") {
+        const st = document.createElement("select");
+        st.innerHTML = MOUNTAIN_STYLES.map((n, i) => `<option value="${i}">${n}</option>`).join("");
+        st.value = String(Math.round(f.params.style) || 0);
+        st.onchange = () => { pushUndo(); f.params.style = +st.value; changed({ keepProps: true }); };
+        row(d[0], st, "", "style"); continue;
+      }
+      row(d[0], num(f.params[k], d[2], (v) => { f.params[k] = d[3] !== undefined ? clamp(v, d[3], d[4]) : v; }), d[1], ROLL[f.type] && ROLL[f.type].params[k] ? k : "");
     }
   }
   if (t.kind === "spline") {
     H3(`Control points (${f.pts.length})`);
+    if (ROLL[f.type] && ROLL[f.type].pts) row("Path shape", Object.assign(document.createElement("span"), { textContent: "Reroll nudges the points", className: "unit" }), "", "pts");
     const tb = document.createElement("table"); tb.className = "pts";
     f.pts.forEach((q, k) => {
       const tr = document.createElement("tr"); if (k === selPt) tr.className = "sel";
@@ -1496,11 +1552,99 @@ function renderMeta() {
   lines.push(`Box: ${Math.round(bb[2] - bb[0])} × ${Math.round(bb[3] - bb[1])} m`);
   el.textContent = lines.join("\n");
 }
-function rerollSel() {
+//----- Reroll -----||
+// Reroll re-randomizes the whole character of ONE feature: a new seed plus size, shape
+// parameters, rotation and (splines) a moderate nudge of the control points, each drawn
+// from a range that suits the type. The values come from the new seed, are stored in the
+// project like any edit (so a reroll is reproducible) and undo as one step.
+// Locks: a padlock per row keeps that value. Position is locked by default.
+// Sizes, rotation and points vary around a base: the value the user last set. A value
+// still equal to what the previous reroll produced keeps its old base (no drift);
+// typing or dragging a new value makes that the new centre of the range.
+const MOUNTAIN_STYLES = ["Peak", "Massif (flat top, cliff walls)", "Ridge", "Volcano (caldera)"];
+const pick = (vals, w) => ({ pick: vals, w });
+const ROLL = {
+  mountain: { size: { len: [0.7, 1.35], wid: [0.7, 1.35], hgt: [0.6, 1.5] }, rot: 40, falloff: [30, 120], pos: 0.1,
+    params: { style: pick([0, 1, 2, 3], [4, 2.5, 2, 1.5]), sharp: [0.2, 1], ridges: [0.2, 1], warp: [0.2, 1.1], detail: [0.2, 0.9], cliffs: [0.3, 0.95], crater: [0.15, 0.35], bands: pick([0, 0, 0, 1, 2, 3, 4]) } },
+  hill: { size: { len: [0.7, 1.4], wid: [0.7, 1.4], hgt: [0.5, 1.8] }, rot: 60, falloff: [20, 70], pos: 0.1, params: { warp: [0.1, 1], roll: [0, 0.8] } },
+  terraces: { size: { len: [0.75, 1.3], wid: [0.75, 1.3], hgt: [0.6, 1.6] }, rot: 60, falloff: [15, 50], pos: 0.1, params: { step: [3, 10], riser: [0.15, 0.6], warp: [0.2, 1] } },
+  plateau: { size: { len: [0.75, 1.3], wid: [0.75, 1.3], hgt: [0.6, 1.5] }, rot: 60, pos: 0.1,
+    params: { side: [8, 60], ledges: pick([0, 1, 2, 3, 4]), warp: [0.2, 1.2], talus: [5, 60], tiers: pick([1, 1, 2, 2, 3]) } },
+  lake: { size: { len: [0.75, 1.35], wid: [0.75, 1.35], hgt: [0.6, 1.8] }, rot: 90, falloff: [15, 50], pos: 0.1, params: { warp: [0.1, 1.1], shore: [0.15, 0.6] } },
+  // the waterfall never moves or turns: it has to stay on its drop
+  waterfall: { size: { wid: [0.6, 1.6], hgt: [0.6, 2] }, params: { reach: [15, 45] } },
+  range: { size: { wid: [0.75, 1.3], hgt: [0.6, 1.4] }, falloff: [30, 120], pts: 0.12,
+    params: { peaks: pick([2, 3, 4, 5, 6, 7, 8, 9]), sharp: [0.2, 1], spurs: [0.2, 1], wiggle: [0.1, 0.9], flat: pick([0, 0, 0, 0.4, 0.6, 0.8, 1]) } },
+  cliff: { size: { wid: [0.7, 1.5], hgt: [0.6, 1.6] }, pts: 0.1, params: { lean: [0, 25], rough: [0.2, 1.1], strata: pick([0, 1, 2, 3, 4, 5, 6]) } },
+  worldedge: { size: { hgt: [0.9, 1.3] }, pts: 0.04, params: { lean: [0, 10], rough: [0.3, 1.2], strata: pick([2, 3, 4, 5, 6, 7, 8, 9]) } },
+  valley: { size: { wid: [0.7, 1.4], hgt: [0.6, 1.6] }, pts: 0.12, params: { floor: [0.05, 0.6], steep: [0, 1], rough: [0.1, 0.8], wiggle: [0.1, 0.8] } },
+  // the bed never rises downstream (the river code), so any nudge still flows downhill
+  river: { size: { wid: [0.7, 1.5], hgt: [0.7, 1.6] }, pts: 0.1, params: { bank: [12, 50], meander: [0.15, 1.2], water: [1, 2.4], gorge: [0, 0.8] } },
+  trail: { size: { wid: [0.8, 1.4] }, falloff: [3, 12], pts: 0.05, params: { smooth: [20, 90] } },
+  shoreline: { size: { wid: [0.8, 1.3], hgt: [0.7, 1.5] }, pts: 0.07, params: { beach: [12, 50], beachH: [0.8, 2.5], seaDepth: [12, 35], rough: [0.2, 1] } },
+};
+function isLocked(f, k) { return k === "pos" ? !(f.locks && f.locks.pos === false) : !!(f.locks && f.locks[k]); }
+function lockBtn(f, k) {
+  const b = document.createElement("button"); b.className = "lk"; const on = f && isLocked(f, k);
+  b.textContent = on ? "🔒" : "🔓"; b.classList.toggle("on", !!on);
+  b.title = on ? "Locked: Reroll keeps this value (click to unlock)" : "Unlocked: Reroll may change this (click to lock)";
+  b.onclick = () => { if (!f) return; pushUndo(); f.locks = f.locks || {}; f.locks[k] = !isLocked(f, k); changed(); };
+  return b;
+}
+function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+function rerollFeature(f, seedOnly) {
+  if (!isLocked(f, "seed")) f.seed = randSeed();
+  const R = ROLL[f.type];
+  if (seedOnly || !R) return;
+  const rnd = mulberry(randSeed()), lerp = (r) => r[0] + (r[1] - r[0]) * rnd();
+  // bases: the user's values (see above)
+  const keys = ["len", "wid", "hgt", "rot", "pts", "x", "y"], prevOut = f.rollOut || {}, prevBase = f.rollBase || {}, base = {}, out = {};
+  for (const k of keys) if (f[k] !== undefined) base[k] = JSON.parse(JSON.stringify(k in prevOut && k in prevBase && same(f[k], prevOut[k]) ? prevBase[k] : f[k]));
+  for (const k in R.size || {}) if (!isLocked(f, k)) f[k] = Math.max(1, Math.round(base[k] * lerp(R.size[k]) * 10) / 10);
+  if (R.rot && !isLocked(f, "rot")) f.rot = Math.round(base.rot + (rnd() * 2 - 1) * R.rot);
+  if (R.falloff && !isLocked(f, "falloff")) f.falloff = Math.round(lerp(R.falloff));
+  for (const k in R.params) {
+    if (isLocked(f, k)) continue;
+    const r = R.params[k];
+    if (r.pick) { let tot = 0; const w = r.w || r.pick.map(() => 1); for (const x of w) tot += x; let u = rnd() * tot, i = 0; while (i < w.length - 1 && (u -= w[i]) > 0) i++; f.params[k] = r.pick[i]; }
+    else f.params[k] = Math.round(lerp(r) * 100) / 100;
+  }
+  if (f.type === "mountain" && f.params.style === 2 && !isLocked(f, "len")) f.len = Math.round(f.len * 1.3);     // a ridge reads better long
+  if (f.type === "river") f.params.water = Math.min(f.params.water, f.hgt);
+  if (!isLocked(f, "pos") && R.pos && CORE.T[f.type].kind === "point") {
+    const m = Math.min(f.len, f.wid) * R.pos;
+    f.x = Math.round(base.x + (rnd() * 2 - 1) * m); f.y = Math.round(base.y + (rnd() * 2 - 1) * m);
+  }
+  if (R.pts && f.pts && !isLocked(f, "pts")) f.pts = nudgePts(base.pts, !!f.closed || f.type === "shoreline", R.pts, rnd);
+  for (const k of keys) if (f[k] !== undefined) out[k] = JSON.parse(JSON.stringify(f[k]));
+  f.rollBase = base; f.rollOut = out;
+}
+// Splines: open curves keep both endpoints and move the inner points sideways by up to
+// amp x the local spacing; closed loops scale each point's distance from the centre by
+// 1 +- amp (smoothed between neighbours so the outline stays recognisable).
+function nudgePts(pts, closed, amp, rnd) {
+  const n = pts.length, r = pts.map(() => rnd() * 2 - 1);
+  const sm = r.map((v, i) => closed ? (r[(i + n - 1) % n] + 2 * v + r[(i + 1) % n]) / 4 : v);
+  if (closed) {
+    let cx = 0, cy = 0; for (const q of pts) { cx += q[0]; cy += q[1]; } cx /= n; cy /= n;
+    return pts.map((q, i) => { const k = 1 + amp * sm[i]; return [Math.round(cx + (q[0] - cx) * k), Math.round(cy + (q[1] - cy) * k)]; });
+  }
+  return pts.map((q, i) => {
+    if (i === 0 || i === n - 1) return [q[0], q[1]];
+    const a = pts[i - 1], b = pts[i + 1], tx = b[0] - a[0], ty = b[1] - a[1], tl = Math.hypot(tx, ty) || 1, sp = tl / 2;
+    return [Math.round(q[0] - ty / tl * sm[i] * amp * sp), Math.round(q[1] + tx / tl * sm[i] * amp * sp)];
+  });
+}
+function rerollSel(seedOnly) {
   const f = featById(sel);
   if (sel === "base") { pushUndo(); proj.base.seed = randSeed(); changed(); return; }
   if (!f) return;
-  pushUndo(); f.seed = randSeed(); changed();
+  pushUndo();
+  rerollFeature(f, seedOnly);
+  // waterfalls on a rerolled river or wall follow its new crossing
+  if (!seedOnly && f.pts) for (const w of proj.features) if (w.type === "waterfall") snapWaterfall(w, 90);
+  changed();
 }
 function centroid(f) {
   const p = f.pts || []; let x = 0, y = 0;
@@ -2855,7 +2999,8 @@ const HELP_HTML = `<h2>Terrain Maker</h2>
 <li><b>Splines</b> (range, cliff, world edge, valley, river, trail, shoreline): drag the numbered control points. Double-click the curve to insert a point; right-click a point (or select it and press <kbd>Del</kbd>) to delete it. The diamond moves the whole curve, the round handle rotates it, the square scales it.</li>
 <li><kbd>Shift</kbd> while dragging snaps to the grid shown (and 15° steps). Middle-drag, Space+drag or drag on empty ground pans; the wheel zooms at the cursor. <kbd>F</kbd> fits the map.</li>
 <li><b>View</b> (top right, <kbd>W</kbd> toggles): <i>Shaded</i> shows the terrain; <i>Outlines</i> shows only the coastline (thick), contours every 10 m and feature outlines, for shaping the island. Everything stays editable.</li>
-<li><b>Reroll</b> (<kbd>R</kbd>) gives the selected feature a new seed; only it changes.</li>
+<li><b>Reroll</b> (<kbd>R</kbd>) re-randomizes the selected feature only: its size, height, rotation, falloff, shape settings (style, sharpness, ridges, warp, cliff bands, tiers, lean, meander…) and, for paths, a moderate nudge of the inner control points (endpoints stay; loops keep their outline). Each type has its own sensible ranges, e.g. a mountain may come back as a peak, a flat-topped massif with cliff walls, a ridge or a volcano. One undo step. <b>Seed</b> (or <kbd>Shift</kbd>+<kbd>R</kbd>, or Shift-click Reroll) changes only the seed for subtle variation.</li>
+<li><b>Locks</b>: the padlock on a property row keeps that value through rerolls. Position is locked by default. Sizes vary around the value you last typed or dragged, so set a size and reroll to get variations of about that size, or lock it to keep it exact. Rivers still flow downhill, and waterfalls never move on a reroll (rerolling their river re-snaps them to the drop).</li>
 <li><b>Tree</b>: features apply top to bottom over the base. Drag to reorder, ●/◌ hides (suppresses), double-click renames. <kbd>Ctrl+D</kbd> duplicates, <kbd>Del</kbd> deletes. <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Shift+Z</kbd> undo / redo.</li>
 <li><b>Blend</b>: add raises, carve lowers, max rises to Base Z + shape (never lowers), flatten pulls to Base Z + shape.</li>
 <li><b>Water</b>: below sea level is sea; lakes fill to their spill level; rivers keep a bed that never climbs downstream; a waterfall snaps to where a river crosses a cliff. All water is one color.</li>
@@ -2954,7 +3099,7 @@ function wire() {
       e.preventDefault();
     }
     else if (e.key === "Escape") { if (placing) { placing = null; renderDrawer(); drawOverlay(); } else if (view === "2d") select(null); document.querySelectorAll(".modal.show").forEach((m) => m.classList.remove("show")); }
-    else if (e.key === "r" && !mod && view !== "walk") rerollSel();
+    else if ((e.key === "r" || e.key === "R") && !mod && view !== "walk") rerollSel(e.shiftKey);
     else if (e.key === "f" && !mod && view === "2d") fitView();
     else if (e.key === "w" && !mod && view === "2d") setViewMode(viewMode === "outlines" ? "shaded" : "outlines");
     else if (e.key === "h" && !mod && featById(sel)) { pushUndo(); featById(sel).hidden = !featById(sel).hidden; changed(); }
