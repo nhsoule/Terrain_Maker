@@ -119,6 +119,7 @@ h3 { margin:10px 10px 6px; font-size:11px; letter-spacing:.08em; text-transform:
     <div id="hud"></div>
     <div id="busy"></div>
     <div id="viewOpts">
+      <label id="oMode" title="Display mode (W toggles)">view <select id="sMode"><option value="shaded">Shaded</option><option value="outlines">Outlines</option></select></label>
       <label id="oContours"><input type="checkbox" id="cContours"> contours</label>
       <label id="oOutlines"><input type="checkbox" id="cOutlines" checked> outlines</label>
       <label id="oUnder" style="display:none"><input type="checkbox" id="cUnder" checked> underlay</label>
@@ -1523,6 +1524,18 @@ const glCv = $("gl"), ovCv = $("ov"), ov = ovCv.getContext("2d");
 const gl = glCv.getContext("webgl2", { antialias: true, preserveDrawingBuffer: true, powerPreference: "high-performance" });
 let tH = null, tW = null, tB = null, tU = null, TK = 1, TN = 0, maxTex = 0;
 let view = "2d";
+//----- Display Mode -----||
+// "shaded" (hillshade + biomes) or "outlines" (contours, coastline and feature outlines only).
+// Kept in localStorage so it survives reloads; W toggles it in the 2D view.
+const VIEWMODE_KEY = "terrainMaker.viewMode";
+let viewMode = "shaded";
+try { if (localStorage.getItem(VIEWMODE_KEY) === "outlines") viewMode = "outlines"; } catch (e) { /* ignore */ }
+function setViewMode(m) {
+  viewMode = m === "outlines" ? "outlines" : "shaded";
+  try { localStorage.setItem(VIEWMODE_KEY, viewMode); } catch (e) { /* ignore */ }
+  const sm = $("sMode"); if (sm) sm.value = viewMode;
+  draw2D();
+}
 function compile(type, src) {
   const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
   if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) + "\n" + src.split("\n").slice(0, 5).join("\n"));
@@ -1602,7 +1615,7 @@ precision highp float; precision highp int;
 uniform highp sampler2D uH, uW, uU; uniform highp usampler2D uB;
 uniform vec3 uView;          // center x, y (m), screen px per m
 uniform vec2 uRes;           // canvas px
-uniform float uMpp, uK, uN, uContour, uSea;
+uniform float uMpp, uK, uN, uContour, uSea, uMode;   // uMode 1 = Outlines display mode
 uniform vec4 uUnd;           // underlay: w, h (texels), m per texel, alpha (0 = off)
 uniform vec3 uPal[${BIOMES.length}]; uniform vec3 uWater, uSun;
 out vec4 o;
@@ -1614,6 +1627,20 @@ void main() {
   vec2 g = vec2(w.x, span - w.y) / (uMpp * uK);
   ivec2 p = ivec2(floor(g + 0.5));
   float h = hAt(p), ws = texelFetch(uW, p, 0).r;
+  if (uMode > 0.5) {
+    // Outlines: plain background, inland water faintly tinted, contours every 10 m
+    // (bold every 50 m) and a thick coastline at sea level. No hillshade or biomes.
+    vec3 c = vec3(0.105, 0.115, 0.13);
+    if (ws > h && h >= uSea) c = mix(c, uWater, 0.25);
+    float fw = max(fwidth(h), 1e-3);
+    float c10 = abs(fract(h / 10.0 + 0.5) - 0.5) * 10.0, c50 = abs(fract(h / 50.0 + 0.5) - 0.5) * 50.0;
+    float fade = 1.0 - smoothstep(2.0, 5.0, fw);
+    c = mix(c, vec3(0.42, 0.45, 0.5), (1.0 - smoothstep(fw * 0.5, fw * 1.5, c10)) * 0.55 * fade);
+    c = mix(c, vec3(0.62, 0.66, 0.72), (1.0 - smoothstep(fw * 0.8, fw * 2.0, c50)) * 0.8 * fade);
+    float dc = abs(h - uSea);
+    c = mix(c, vec3(0.35, 0.8, 1.0), 1.0 - smoothstep(fw * 1.4, fw * 2.6, dc));
+    o = vec4(c, 1.0); return;
+  }
   uint b = texelFetch(uB, p, 0).r;
   int s = max(1, int(1.0 / (uView.z * uMpp * uK)));
   float d = float(s) * uMpp * uK * 2.0;
@@ -1645,7 +1672,7 @@ void main() {
   }
   o = vec4(col, 1.0);
 }`);
-  U2 = uniforms(prog2, ["uH", "uW", "uU", "uB", "uView", "uRes", "uMpp", "uK", "uN", "uContour", "uSea", "uUnd", "uPal", "uWater", "uSun"]);
+  U2 = uniforms(prog2, ["uH", "uW", "uU", "uB", "uView", "uRes", "uMpp", "uK", "uN", "uContour", "uSea", "uMode", "uUnd", "uPal", "uWater", "uSun"]);
 }
 
 //----- 2D View -----||
@@ -1679,6 +1706,7 @@ function render2D() {
   gl.uniform2f(U2.uRes, glCv.width, glCv.height);
   gl.uniform1f(U2.uMpp, proj.mpp); gl.uniform1f(U2.uK, TK); gl.uniform1f(U2.uN, TN);
   gl.uniform1f(U2.uContour, $("cContours").checked ? 1 : 0); gl.uniform1f(U2.uSea, proj.sea);
+  gl.uniform1f(U2.uMode, viewMode === "outlines" ? 1 : 0);
   const uon = underlay && tU && showUnder && !proj.useUnderlay;
   gl.uniform4f(U2.uUnd, uon ? Math.ceil(underlay.w / underlay.texK) : 0, uon ? Math.ceil(underlay.h / underlay.texK) : 0, uon ? underlay.mpp * underlay.texK : 1, uon ? 0.5 : 0);
   gl.uniform3fv(U2.uPal, PAL); gl.uniform3fv(U2.uWater, WCOL); gl.uniform3fv(U2.uSun, SUN);
@@ -2826,6 +2854,7 @@ const HELP_HTML = `<h2>Terrain Maker</h2>
 <li><b>Select</b>: click it on the map or in the feature tree. <b>Move</b>: drag it (or the diamond). <b>Rotate</b>: the round handle. <b>Scale / stretch</b>: the square handles (length, width, both). Height (Z) is in the panel.</li>
 <li><b>Splines</b> (range, cliff, world edge, valley, river, trail, shoreline): drag the numbered control points. Double-click the curve to insert a point; right-click a point (or select it and press <kbd>Del</kbd>) to delete it. The diamond moves the whole curve, the round handle rotates it, the square scales it.</li>
 <li><kbd>Shift</kbd> while dragging snaps to the grid shown (and 15° steps). Middle-drag, Space+drag or drag on empty ground pans; the wheel zooms at the cursor. <kbd>F</kbd> fits the map.</li>
+<li><b>View</b> (top right, <kbd>W</kbd> toggles): <i>Shaded</i> shows the terrain; <i>Outlines</i> shows only the coastline (thick), contours every 10 m and feature outlines, for shaping the island. Everything stays editable.</li>
 <li><b>Reroll</b> (<kbd>R</kbd>) gives the selected feature a new seed; only it changes.</li>
 <li><b>Tree</b>: features apply top to bottom over the base. Drag to reorder, ●/◌ hides (suppresses), double-click renames. <kbd>Ctrl+D</kbd> duplicates, <kbd>Del</kbd> deletes. <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Shift+Z</kbd> undo / redo.</li>
 <li><b>Blend</b>: add raises, carve lowers, max rises to Base Z + shape (never lowers), flatten pulls to Base Z + shape.</li>
@@ -2844,7 +2873,7 @@ let camInit = false;
 function setView(v) {
   view = v;
   for (const [id, k] of [["v2d", "2d"], ["v3d", "3d"], ["vWalk", "walk"]]) $(id).classList.toggle("on", k === v);
-  $("oContours").style.display = $("oOutlines").style.display = v === "2d" ? "" : "none";
+  $("oMode").style.display = $("oContours").style.display = $("oOutlines").style.display = v === "2d" ? "" : "none";
   $("oUnder").style.display = v === "2d" && underlay ? "" : "none";
   $("oFog").style.display = v === "walk" ? "" : "none";
   $("viewOpts").style.display = v === "3d" ? "none" : "";
@@ -2896,6 +2925,7 @@ function wire() {
   $("mHelp").onclick = (e) => { if (e.target === $("mHelp")) $("mHelp").classList.remove("show"); };
   $("tUp").onclick = () => nudgeOrder(-1); $("tDown").onclick = () => nudgeOrder(1);
   $("tDup").onclick = duplicateSel; $("tDel").onclick = deleteSel;
+  $("sMode").value = viewMode; $("sMode").onchange = () => { setViewMode($("sMode").value); $("sMode").blur(); };
   $("cContours").onchange = draw2D; $("cOutlines").onchange = drawOverlay;
   $("cUnder").onchange = () => { showUnder = $("cUnder").checked; draw2D(); };
   $("cFog").onchange = request3D;
@@ -2926,6 +2956,7 @@ function wire() {
     else if (e.key === "Escape") { if (placing) { placing = null; renderDrawer(); drawOverlay(); } else if (view === "2d") select(null); document.querySelectorAll(".modal.show").forEach((m) => m.classList.remove("show")); }
     else if (e.key === "r" && !mod && view !== "walk") rerollSel();
     else if (e.key === "f" && !mod && view === "2d") fitView();
+    else if (e.key === "w" && !mod && view === "2d") setViewMode(viewMode === "outlines" ? "shaded" : "outlines");
     else if (e.key === "h" && !mod && featById(sel)) { pushUndo(); featById(sel).hidden = !featById(sel).hidden; changed(); }
   });
   window.addEventListener("keyup", (e) => {
