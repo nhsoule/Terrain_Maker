@@ -275,7 +275,7 @@ function terrainCore() {
   function makeCtx(p, rect) {
     const rw = rect.c1 - rect.c0 + 1, rh = rect.r1 - rect.r0 + 1, n = rw * rh;
     return { p, mpp: p.mpp, N: gridN(p), c0: rect.c0, r0: rect.r0, c1: rect.c1, r1: rect.r1, rw, rh,
-      H: new Float32Array(n), WS: new Float32Array(n).fill(NO_WATER), WK: new Uint8Array(n), TAG: new Uint8Array(n), meta: {} };
+      H: new Float32Array(n), WS: new Float32Array(n).fill(NO_WATER), WK: new Uint8Array(n), TAG: new Uint8Array(n), BO: new Uint8Array(n).fill(255), meta: {} };
   }
   const gridN = (p) => Math.round(p.size / p.mpp) + 1;
   // World bbox [x0, y0, x1, y1] -> pixel rect clipped to the region (or null).
@@ -957,6 +957,379 @@ function terrainCore() {
     apply() {},                                                             // done in shorePass
   };
 
+  //----- Landforms II -----||
+  // Shared bits: a lobed radius r (0 centre .. 1 edge) per pixel and an edge weight.
+  const lobedR = (LB, u, v) => Math.hypot(u, v) / LB(Math.atan2(v, u));
+  const edgeW = (f, r) => sstep(0, Math.max(1, f.falloff), (1 - r) * minR(f));
+  const isLand = (ctx, i) => !(ctx.WS[i] > ctx.H[i] + 0.02);
+  // Lowest ground on a ring of the footprint (lake / swamp / zone water level).
+  function ringMin(ctx, f, R, Q, r0, r1) {
+    let lo = 1e9, k = 0;
+    each(ctx, R, (i) => { const r = Q[k++]; if (r >= r0 && r <= r1 && ctx.H[i] < lo) lo = ctx.H[i]; });
+    return lo < 1e8 ? lo : hAt(ctx, f.x, f.y);
+  }
+  function lobedQ(ctx, f, R, lobes, wob) {
+    const s = f.seed | 0, LB = lobeFn(s, clamp(lobes, 0, 1.5)), rm = minR(f);
+    const W = wob > 0 ? coarse(ctx, R, 4, (x, y) => wob * fbm(x, y, s + 31, rm * 0.6, 2)) : null;
+    const Q = new Float32Array((R.c1 - R.c0 + 1) * (R.r1 - R.r0 + 1));
+    eachLocalArr(ctx, f, R, (i, k, u, v) => { Q[k] = lobedR(LB, u, v) + (W ? W[k] : 0); });
+    return Q;
+  }
+
+  T.crater = {
+    kind: "point", label: "Crater / caldera", blend: "add", samples: true, fresh: { lobes: 0.3 },
+    def: { len: 360, wid: 340, hgt: 18, falloff: 30, params: { style: 0, lobes: 0, depth: 14, rim: 0.3, lake: 0 } },
+    // style: 0 bowl, 1 caldera (flat floor, steep walls), 2 nested (a cone inside the bowl),
+    // 3 breached (the rim broken on one side). hgt = rim height, depth = floor below the
+    // ground. lake 1 floods the floor up to just under the lowest point of the rim.
+    bbox: (f) => pointBB(f, 1.05),
+    apply(ctx, f, R) {
+      const s = f.seed | 0, style = Math.round(P(f, "style", 0)), depth = Math.max(0, P(f, "depth", 30)), rw = clamp(P(f, "rim", 0.3), 0.1, 0.6), rr = 1 - rw;
+      const lake = P(f, "lake", 0) > 0, sea = ctx.p.sea;
+      const Q = lobedQ(ctx, f, R, P(f, "lobes", 0), 0.05), gap = h01(s, 5) * TAU, gapW = 0.5 + 0.6 * h01(s, 6), cu = 0.08 * noise1(2.3, s), cv = 0.08 * noise1(5.9, s);
+      eachLocalArr(ctx, f, R, (i, k, u, v, x, y) => {
+        const r = Q[k]; if (r >= 1) return;
+        const rim = f.hgt * (style === 3 ? 0.1 + 0.9 * sstep(0.2, gapW, Math.abs(angD(Math.atan2(v, u), gap))) : 1);
+        let h;
+        if (r >= rr) h = rim * Math.pow((1 - r) / rw, 1.5);
+        else {
+          const q = r / rr, fl = -depth * (style === 3 ? 0.7 : 1);
+          h = style === 1 || style === 2 ? fl + (rim - fl) * sstep(0.62, 1, q) : fl + (rim - fl) * Math.pow(q, 2.2);
+          if (style === 2) { const qc = Math.hypot(u - cu, v - cv) / (rr * 0.32); if (qc < 1) h = Math.max(h, fl + (depth + f.hgt * 0.6) * Math.pow(1 - qc, 1.3)); }
+        }
+        h += 0.08 * f.hgt * fbm(x, y, s + 19, 16, 3, 4) * sstep(0.3, 0.9, r);
+        const h0 = ctx.H[i];
+        blendAt(ctx.H, i, f.blend, h, edgeW(f, r), 0);
+        if (!lake && h0 > sea + 0.5 && ctx.H[i] < sea + 0.5) ctx.H[i] = sea + 0.5;     // a dry floor stays above the sea
+      });
+      if (lake) {
+        let lo = 1e9, k = 0;
+        each(ctx, R, (i) => { const r = Q[k++]; if (r < rr * 0.9 && ctx.H[i] < lo) lo = ctx.H[i]; });
+        const rimLo = ringMin(ctx, f, R, Q, rr - 0.03, rr + 0.05), lvl = lo + (rimLo - lo) * 0.7;
+        k = 0;
+        each(ctx, R, (i) => { const r = Q[k++]; if (r < rr + 0.05 && ctx.H[i] < lvl && lvl > ctx.WS[i]) { ctx.WS[i] = lvl; ctx.WK[i] = WK_LAKE; } });
+        ctx.meta[f.id] = { level: lvl };
+      }
+    },
+  };
+
+  T.dunes = {
+    kind: "point", label: "Dunes", blend: "add", fresh: { lobes: 0.4 },
+    def: { len: 600, wid: 420, hgt: 8, falloff: 60, params: { style: 0, lobes: 0, wave: 60, asym: 0.75, wiggle: 0.5 } },
+    // Wind blows along +length. style: 0 transverse ridges across the wind, 1 barchans
+    // (crescents with horns downwind), 2 linear / seif ridges along the wind. wave = spacing
+    // (m), asym = how steep the downwind slip face is. Paints sand (desert).
+    bbox: (f) => pointBB(f, 1.05),
+    apply(ctx, f, R) {
+      const s = f.seed | 0, style = Math.round(P(f, "style", 0)), wave = Math.max(8, P(f, "wave", 60)), asym = clamp(P(f, "asym", 0.75), 0.5, 0.95), wig = P(f, "wiggle", 0.5);
+      const Q = lobedQ(ctx, f, R, P(f, "lobes", 0), 0.06), hu = f.len / 2, hv = f.wid / 2, cell = wave * 2.2;
+      const saw = (fr) => fr < asym ? sstep(0, 1, fr / asym) : 1 - sstep(0, 1, (fr - asym) / (1 - asym));
+      eachLocalArr(ctx, f, R, (i, k, u, v, x, y) => {
+        const r = Q[k]; if (r >= 1) return;
+        const xm = u * hu, ym = v * hv, w = edgeW(f, r);
+        let prof;
+        if (style === 1) {
+          prof = 0;
+          const ci = Math.floor(xm / cell), cj = Math.floor(ym / cell);
+          for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
+            const hx = hi(ci + a, cj + b, s), jx = ((hx & 255) / 255 - 0.5) * 0.6, jy = (((hx >>> 8) & 255) / 255 - 0.5) * 0.6, sz = 0.6 + 0.5 * ((hx >>> 16) & 255) / 255;
+            const lx = (xm - (ci + a + 0.5 + jx) * cell) / (wave * sz), ly = (ym - (cj + b + 0.5 + jy) * cell) / (wave * sz);
+            const dome = Math.max(0, 1 - lx * lx * 1.4 - ly * ly);
+            if (dome <= 0) continue;
+            const bite = Math.hypot((lx - 0.55) * 1.3, ly * 0.9);                  // the hollow downwind between the horns
+            const c = dome * sstep(0.45, 0.85, bite) * sz;
+            if (c > prof) prof = c;
+          }
+        } else if (style === 2) {
+          const ph = (ym + wig * wave * 0.9 * perlin(xm / (wave * 4), 0.3, s)) / wave;
+          prof = Math.pow(1 - Math.abs(2 * (ph - Math.floor(ph)) - 1), 1.6) * (0.65 + 0.35 * perlin(xm / (wave * 3), ym / wave, s + 3));
+        } else {
+          const ph = (xm + wig * wave * 0.7 * perlin(ym / (wave * 3), 0.5, s)) / wave;
+          prof = saw(ph - Math.floor(ph)) * (0.6 + 0.4 * perlin(xm / (wave * 4), ym / (wave * 4), s + 5));
+        }
+        prof += 0.04 * perlin(x / 6, y / 6, s + 9);
+        blendAt(ctx.H, i, f.blend, f.hgt * prof, w, 0);
+        if (r < 0.97) ctx.BO[i] = B_DESERT;
+      });
+    },
+  };
+
+  T.meadow = {
+    kind: "point", label: "Meadow", noBlend: true, blend: "flatten", samples: true, fresh: { lobes: 0.4 },
+    def: { len: 400, wid: 320, hgt: 1.5, falloff: 60, params: { lobes: 0, level: 0.8 } },
+    // Levels the ground toward its average (level 0..1) with a gentle roll (hgt m) and
+    // paints it grassland.
+    bbox: (f) => pointBB(f, 1.05),
+    apply(ctx, f, R) {
+      const s = f.seed | 0, lev = clamp(P(f, "level", 0.8), 0, 1), Q = lobedQ(ctx, f, R, P(f, "lobes", 0), 0.06);
+      let sum = 0, n = 0, k = 0;
+      each(ctx, R, (i) => { if (Q[k++] < 0.8) { sum += ctx.H[i]; n++; } });
+      const mean = n ? sum / n : hAt(ctx, f.x, f.y);
+      const RL = coarse(ctx, R, 4, (x, y) => f.hgt * fbm(x, y, s + 3, minR(f) * 0.5, 3));
+      k = 0;
+      each(ctx, R, (i) => {
+        const r = Q[k], kk = k++; if (r >= 1) return;
+        blendAt(ctx.H, i, "flatten", mean + RL[kk] - (f.z || 0), lev * edgeW(f, r), f.z || 0);
+        if (r < 0.95 && isLand(ctx, i)) ctx.BO[i] = B_PLAINS;
+      });
+    },
+  };
+
+  T.biome = {
+    kind: "point", label: "Biome zone", noBlend: true, blend: "add", samples: true, fresh: { lobes: 0.5 },
+    def: { len: 400, wid: 300, hgt: 1.5, falloff: 0, params: { biome: 9, lobes: 0, edge: 0.15 } },
+    // Paints one biome over the area. Land biomes recolour land; water biomes (ocean, lake,
+    // river, pond, swamp) flood the area hgt m deep with that kind of water.
+    bbox: (f) => pointBB(f, 1.05),
+    apply(ctx, f, R) {
+      const b = clamp(Math.round(P(f, "biome", 9)), 0, 9), Q = lobedQ(ctx, f, R, P(f, "lobes", 0), clamp(P(f, "edge", 0.15), 0, 0.5));
+      if (b <= B_SWAMP) {
+        const lvl = ringMin(ctx, f, R, Q, 0.95, 1.05) - 0.05, dep = Math.max(0.3, f.hgt), wk = [WK_SEA, WK_LAKE, WK_RIVER, WK_POND, WK_SWAMP][b];
+        let k = 0;
+        each(ctx, R, (i) => {
+          const r = Q[k++]; if (r >= 1) return;
+          const z = lvl - dep * sstep(0.85, 0.35, r);
+          if (ctx.H[i] > z) ctx.H[i] = z + (ctx.H[i] - z) * sstep(0.85, 1, r);
+          if (ctx.H[i] < lvl && lvl > ctx.WS[i]) { ctx.WS[i] = lvl; ctx.WK[i] = wk; }
+          ctx.BO[i] = b;
+        });
+        ctx.meta[f.id] = { level: lvl };
+      } else {
+        let k = 0;
+        each(ctx, R, (i) => { if (Q[k++] < 1 && isLand(ctx, i)) ctx.BO[i] = b; });
+      }
+    },
+  };
+
+  T.swamp = {
+    kind: "point", label: "Swamp", noBlend: true, blend: "flatten", samples: true, fresh: { lobes: 0.5 },
+    def: { len: 420, wid: 340, hgt: 2.5, falloff: 40, params: { lobes: 0, wet: 0.55, hummocks: 0.6 } },
+    // Levels the area to just above its lowest edge, then lets noise poke hummocks (hgt m)
+    // out of shallow standing water. wet: how much is under water.
+    bbox: (f) => pointBB(f, 1.05),
+    apply(ctx, f, R) {
+      const s = f.seed | 0, wet = clamp(P(f, "wet", 0.55), 0, 1), hum = P(f, "hummocks", 0.6), Q = lobedQ(ctx, f, R, P(f, "lobes", 0), 0.08);
+      const ref = ringMin(ctx, f, R, Q, 0.92, 1.04), lvl = ref + 0.3;
+      const NS = coarse(ctx, R, 2, (x, y) => fbm(x, y, s + 5, 28, 3, 4));
+      let k = 0;
+      each(ctx, R, (i, x, y) => {
+        const r = Q[k], kk = k++; if (r >= 1) return;
+        const g = lvl + f.hgt * (NS[kk] * (0.6 + hum) - (wet - 0.5) * 0.9) + 0.15 * perlin(x / 3, y / 3, s);
+        blendAt(ctx.H, i, "flatten", g, edgeW(f, r), 0);
+        if (r < 0.95) {
+          if (ctx.H[i] < lvl && lvl > ctx.WS[i]) { ctx.WS[i] = lvl; ctx.WK[i] = WK_SWAMP; }
+          ctx.BO[i] = B_SWAMP;
+        }
+      });
+      ctx.meta[f.id] = { level: lvl };
+    },
+  };
+
+  T.cove = {
+    kind: "point", label: "Cove", noBlend: true, blend: "carve", fresh: { lobes: 0.4 },
+    def: { len: 240, wid: 200, hgt: 6, falloff: 0, params: { lobes: 0, mouth: 0.35, beach: 16 } },
+    // A bay cut down below sea level (hgt m deep) with a channel out toward +length (point
+    // the length arrow at the sea), ringed by a beach `beach` m wide. The sea fills it.
+    bbox: (f) => pointBB(f, 1.3),
+    apply(ctx, f, R) {
+      const s = f.seed | 0, sea = ctx.p.sea, mouth = clamp(P(f, "mouth", 0.35), 0.1, 0.9), bw = Math.max(1, P(f, "beach", 16)), rm = minR(f);
+      const LB = lobeFn(s, clamp(P(f, "lobes", 0), 0, 1.5)), W = coarse(ctx, R, 4, (x, y) => 0.06 * fbm(x, y, s + 3, rm * 0.5, 2));
+      eachLocalArr(ctx, f, R, (i, k, u, v) => {
+        const rb = lobedR(LB, u, v) / 0.78, mw = mouth * (1 + 0.5 * sstep(0.6, 1.25, u)), rc = u > 0 ? Math.abs(v) / mw + Math.max(0, u - 1.25) * 4 : 9;
+        const q = Math.min(rb, rc) + W[k], dm = (q - 1) * rm;                      // meters outside the water edge
+        if (dm > bw) return;
+        const z = dm <= 0 ? sea - 0.6 - (f.hgt - 0.6) * sstep(0, rm * 0.45, -dm) : sea - 0.6 + 2.4 * (dm / bw);
+        if (ctx.H[i] > z) ctx.H[i] = z + (ctx.H[i] - z) * (dm <= 0 ? 0 : sstep(bw * 0.6, bw, dm));
+        if (dm > -2 && dm < bw * 0.8 && ctx.H[i] > sea - 0.5) ctx.BO[i] = B_DESERT;
+      });
+    },
+  };
+
+  T.seastack = {
+    kind: "point", label: "Sea stack", blend: "max",
+    def: { len: 140, wid: 140, hgt: 40, falloff: 0, z: 0, params: { style: 1, count: 3, taper: 0.3, rough: 0.6 } },
+    // Steep rock columns rising hgt m above Base Z (sea level 0). style: 0 single, 1 cluster
+    // (count columns), 2 row along the length. taper rounds the tops; rough jags the walls.
+    bbox: (f) => pointBB(f, 1.25),
+    apply(ctx, f, R) {
+      const s = f.seed | 0, style = Math.round(P(f, "style", 1)), n = clamp(Math.round(P(f, "count", 3)), 1, 9), tap = clamp(P(f, "taper", 0.3), 0, 1), rough = P(f, "rough", 0.6);
+      const PK = style === 0 ? [[0, 0, 0.62, 1]] : style === 2
+        ? Array.from({ length: n }, (_, j) => [n > 1 ? -0.75 + 1.5 * j / (n - 1) + 0.1 * noise1(j + 0.3, s) : 0, 0.15 * noise1(j + 7.1, s), 0.2 + 0.12 * h01(s, 80 + j), 0.45 + 0.55 * h01(s, 100 + j)])
+        : subPeaks(s, n, 0.18, 0.34, 0.7);
+      const z0 = f.z || 0, sc = Math.min(f.len, f.wid) / 2;
+      eachLocalArr(ctx, f, R, (i, k, u, v, x, y) => {
+        let best = -1e9;
+        for (const [pu, pv, pr, ph] of PK) {
+          const du = (u - pu) * f.len / 2, dv = (v - pv) * f.wid / 2, rr = pr * sc;
+          const q = Math.hypot(du, dv) / rr * (1 + rough * 0.22 * perlin(Math.atan2(dv, du) * 2.5, z0 * 0.1 + ph * 7, s + 3) + rough * 0.06 * perlin(x / 3, y / 3, s + 5));
+          if (q > 1.5) continue;
+          const top = f.hgt * ph;
+          const h = q < 0.9 ? top * (1 - tap * 0.3 * Math.pow(q / 0.9, 2)) : q < 1 ? top * (1 - tap * 0.3) * sstep(1, 0.9, q) : top * 0.12 * sstep(1.5, 1, q);
+          if (h > best) best = h;
+        }
+        if (best > -1e8) blendAt(ctx.H, i, "max", best, 1, z0);
+      });
+    },
+  };
+
+  //----- Landmark Features -----||
+  // Terrain part of the features that also place a structure (exported as landmarks and
+  // drawn in 3D): the arch's pillars, the overhang's block, the crash furrow, pads.
+  T.arch = {
+    kind: "point", label: "Rock arch", noBlend: true, blend: "max", samples: true, landmark: "rock_arch",
+    def: { len: 90, wid: 26, hgt: 30, falloff: 0, params: { thick: 0.3, rough: 0.5 } },
+    // Two rock pillars at the ends of the length, hgt m tall; the span between them
+    // (thick x hgt deep) is the arch structure.
+    bbox: (f) => pointBB(f, 1.2),
+    apply(ctx, f, R) {
+      const s = f.seed | 0, zb = hAt(ctx, f.x, f.y), rough = P(f, "rough", 0.5), pw = clamp(f.wid / f.len * 0.75, 0.1, 0.32);
+      eachLocalArr(ctx, f, R, (i, k, u, v, x, y) => {
+        for (const sg of [-1, 1]) {
+          const q = Math.hypot((u - sg * (1 - pw)) / pw, v / 1.05) * (1 + rough * 0.15 * perlin(x / 4, y / 4, s + (sg > 0 ? 3 : 4)));
+          if (q >= 1.4) continue;
+          const h = q < 1 ? f.hgt * (1 - 0.06 * q * q) : f.hgt * 0.15 * sstep(1.4, 1, q);
+          blendAt(ctx.H, i, "max", h, 1, zb);
+        }
+      });
+      ctx.meta[f.id] = { base: zb };
+    },
+  };
+
+  T.overhang = {
+    kind: "point", label: "Overhang", noBlend: true, blend: "max", samples: true, landmark: "rock_overhang",
+    def: { len: 60, wid: 50, hgt: 18, falloff: 0, params: { jut: 10, rough: 0.5 } },
+    // A rock block with a sheer face on its front (-width side) and a ramp up its back;
+    // a slab juts out over the face by `jut` m (the overhang structure).
+    bbox: (f) => pointBB(f, 1.15),
+    apply(ctx, f, R) {
+      const s = f.seed | 0, zb = hAt(ctx, f.x, f.y), rough = P(f, "rough", 0.5);
+      eachLocalArr(ctx, f, R, (i, k, u, v, x, y) => {
+        const n = rough * 0.08 * perlin(x / 5, y / 5, s + 2), au = Math.abs(u) + n;
+        if (au >= 1.1 || v < -0.65 + n || v > 1.05) return;
+        const side = sstep(1.1, 0.9, au), face = sstep(-0.65, -0.55, v + n), back = 1 - sstep(0.2, 1.05, v);
+        blendAt(ctx.H, i, "max", f.hgt * side * face * back * (1 + 0.04 * perlin(x / 2, y / 2, s)), 1, zb);
+      });
+      ctx.meta[f.id] = { base: zb };
+    },
+  };
+
+  T.crash = {
+    kind: "point", label: "Crash site", noBlend: true, blend: "add", landmark: "crashed_wreck",
+    def: { len: 180, wid: 40, hgt: 3, falloff: 6, params: { impact: 0.5, debris: 0.5 } },
+    // A furrow ploughed along +length (hgt m deep, with berms) that ends in an impact crater
+    // where the wreck lies; scorched ground and debris mounds around it.
+    bbox: (f) => pointBB(f, 1.3),
+    apply(ctx, f, R) {
+      const s = f.seed | 0, imp = clamp(P(f, "impact", 0.5), 0, 1), deb = clamp(P(f, "debris", 0.5), 0, 1), hu = f.len / 2, hv = f.wid / 2, cr = hv * (0.9 + 1.4 * imp);
+      eachLocalArr(ctx, f, R, (i, k, u, v, x, y) => {
+        const xm = u * hu, ym = v * hv, av = Math.abs(v) + 0.1 * perlin(x / 6, y / 6, s);
+        let h = 0, burn = false;
+        if (u > -1 && u < 0.75 && av < 1.5) {
+          const along = sstep(-1, 0.55, u);
+          h += av < 1 ? -f.hgt * along * (1 - av * av) : f.hgt * 0.35 * along * sstep(1.5, 1.15, av) * sstep(0.9, 1.1, av);
+          burn = av < 1.2 && along > 0.1;
+        }
+        const dc = Math.hypot(xm - 0.72 * hu, ym) / cr;
+        if (dc < 1.5) { h = Math.min(h, 0) + (dc < 1 ? -f.hgt * 1.5 * (1 - dc * dc) : f.hgt * 0.6 * sstep(1.5, 1, dc)); burn = burn || dc < 1.3; }
+        if (deb > 0 && dc < 3.5) {
+          const ci = Math.floor(x / 7), cj = Math.floor(y / 7), hh = hi(ci, cj, s + 77);
+          if ((hh & 1023) / 1023 < deb * 0.18 * sstep(3.5, 1.2, dc)) { const lx = x / 7 - ci - 0.5, ly = y / 7 - cj - 0.5; h += Math.max(0, 1 - 6 * (lx * lx + ly * ly)) * 1.2; }
+        }
+        if (h !== 0) blendAt(ctx.H, i, "add", h, 1, 0);
+        if (burn && isLand(ctx, i)) ctx.BO[i] = (hi(Math.floor(x / 4), Math.floor(y / 4), s) & 3) ? B_ROCK : B_DESERT;
+      });
+    },
+  };
+
+  T.platform = {
+    kind: "point", label: "Platform", noBlend: true, blend: "flatten", landmark: "stranded_platform",
+    def: { len: 24, wid: 18, hgt: 6, falloff: 4, params: { pad: 0 } },
+    // A stranded platform on stilts, its deck hgt m above the ground or water under it.
+    // pad 1 also levels the ground under it.
+    bbox: (f) => pointBB(f, 1 + (Math.max(1, f.falloff) + 2) / minR(f)),
+    apply(ctx, f, R) {
+      if (!(P(f, "pad", 0) > 0)) return;
+      const zc = hAt(ctx, f.x, f.y), rm = minR(f), fo = Math.max(1, f.falloff);
+      eachLocal(ctx, f, R, (i, u, v) => { const d = (Math.max(Math.abs(u), Math.abs(v)) - 1) * rm; if (d < fo) blendAt(ctx.H, i, "flatten", zc, 1 - sstep(0, fo, d), 0); });
+    },
+  };
+
+  T.lookout = {
+    kind: "point", label: "Lookout", noBlend: true, blend: "flatten", samples: true, landmark: "lookout_tower",
+    def: { len: 24, wid: 24, hgt: 14, falloff: 10, params: { mound: 1.5 } },
+    // A levelled pad (raised `mound` m above the highest ground under it) with a lookout
+    // tower hgt m tall.
+    bbox: (f) => pointBB(f, 1 + (Math.max(1, f.falloff) + 2) / minR(f)),
+    apply(ctx, f, R) {
+      const rm = minR(f), fo = Math.max(1, f.falloff);
+      let zc = -1e9;
+      eachLocal(ctx, f, R, (i, u, v) => { if (u * u + v * v < 1 && ctx.H[i] > zc) zc = ctx.H[i]; });
+      if (zc < -1e8) zc = hAt(ctx, f.x, f.y);
+      zc += P(f, "mound", 1.5);
+      eachLocal(ctx, f, R, (i, u, v) => { const d = (Math.hypot(u, v) - 1) * rm; if (d < fo) blendAt(ctx.H, i, "flatten", zc, 1 - sstep(0, fo, d), 0); });
+      ctx.meta[f.id] = { base: zc };
+    },
+  };
+
+  //----- Spline Landforms II -----||
+  const escPoly = (f) => { const p = splinePoly(f.pts, false, 3); return wiggle(p, 20 * P(f, "rough", 0.5), 90, (f.seed | 0) + 1, false, false); };
+  T.escarpment = {
+    kind: "spline", label: "Escarpment", blend: "add",
+    def: { wid: 260, hgt: 35, falloff: 0, params: { side: 1, scarp: 14, back: 0.7, rough: 0.5 } },
+    // A long step in the land: a steep scarp face (scarp m wide) along the line, with the
+    // high ground on `side` sloping gently back down over the width (back 0 = level top).
+    rad: (f) => f.wid + 30 + 20 * P(f, "rough", 0.5),
+    bbox(f) { return splineBB(f, this.rad(f)); },
+    apply(ctx, f, R) {
+      const s = f.seed | 0, side = P(f, "side", 1) < 0 ? -1 : 1, sc = Math.max(1, P(f, "scarp", 14)), back = clamp(P(f, "back", 0.7), 0, 1), rough = P(f, "rough", 0.5);
+      const poly = escPoly(f), rad = f.wid + 20, sp = splat(ctx, R, poly, rad), L = poly.len;
+      const RG = coarse(ctx, R, 2, (x, y) => rough * sc * 0.5 * fbm(x, y, s + 7, 30, 3, 4));
+      let k = 0;
+      each(ctx, R, (i) => {
+        const d = sp.D[k], t = sp.T[k], kk = k, sd = sp.S[k] * side; k++;
+        if (d >= rad) return;
+        const dd = sd > 0 ? d + RG[kk] : -d + RG[kk];
+        let h = f.hgt * sstep(-sc * 0.5, sc * 0.5, dd);
+        if (dd > 0) h *= 1 - back * sstep(sc, f.wid, dd);
+        else h += f.hgt * 0.1 * sstep(-sc * 2, -sc * 0.5, dd);                  // talus
+        const tp = endTaper(t, L, Math.min(L * 0.25, f.wid * 0.6));
+        blendAt(ctx.H, i, f.blend, h * tp, 1, f.z || 0);
+      });
+    },
+  };
+
+  const ravPoly = (f) => { const p = splinePoly(f.pts, false, Math.max(1.5, f.wid / 10)); return wiggle(p, f.wid * 0.5 * P(f, "wiggle", 0.4), Math.max(30, f.wid * 3), (f.seed | 0) + 1, false, false); };
+  T.ravine = {
+    kind: "spline", label: "Ravine", blend: "carve",
+    def: { wid: 30, hgt: 25, falloff: 0, params: { steep: 0.8, rough: 0.6, wiggle: 0.4, creek: 1 } },
+    // A narrow, steep-walled cut (hgt m deep): a slot or V gorge with jagged walls; creek 1
+    // runs a stream along its floor.
+    rad: (f) => f.wid / 2 * 1.5 + f.wid * 0.5 * P(f, "wiggle", 0.4) + 4,
+    bbox(f) { return splineBB(f, this.rad(f)); },
+    apply(ctx, f, R) {
+      const s = f.seed | 0, hw = f.wid / 2, steep = clamp(P(f, "steep", 0.8), 0, 1), rough = P(f, "rough", 0.6), creek = P(f, "creek", 1) > 0;
+      const poly = ravPoly(f), rad = hw * 1.5, sp = splat(ctx, R, poly, rad), L = poly.len;
+      const RG = coarse(ctx, R, 1, (x, y) => rough * 0.25 * fbm(x, y, s + 7, hw * 0.8, 3, 2));
+      let k = 0;
+      each(ctx, R, (i) => {
+        const d = sp.D[k], t = sp.T[k], kk = k; k++;
+        if (d >= rad) return;
+        const q = d / hw + RG[kk], x = clamp((q - 0.08) / 1.2, 0, 1);
+        const prof = 1 - Math.pow(x, 0.25 + (1 - steep) * 0.9);
+        const tp = endTaper(t, L, Math.min(L * 0.2, f.wid * 2));
+        blendAt(ctx.H, i, f.blend, prof * tp * f.hgt, 1, f.z || 0);
+        if (creek && q < 0.14 && tp > 0.3) { const w = ctx.H[i] + 0.35; if (w > ctx.WS[i]) { ctx.WS[i] = w; ctx.WK[i] = WK_RIVER; } }
+      });
+    },
+  };
+
+  // Cliff walkway: a narrow levelled ledge along the line (like a trail) with plank
+  // walkway sections every `spacing` m (the structures).
+  T.walkway = Object.assign({}, T.trail, {
+    label: "Cliff walkway", landmark: "cliff_walkway",
+    def: { wid: 3, hgt: 0, falloff: 3, params: { smooth: 20, ramp: 0, spacing: 6 } },
+  });
+
   //----- Shore Pass -----||
   // 1. Signed distance to each coast (+ inside), clamped to its radius.
   // 2. Union: smooth max of the "shore" loops, then smooth min with the "subtract" loops.
@@ -1052,12 +1425,14 @@ function terrainCore() {
       for (let c = R.c0; c <= R.c1; c++) {
         const cc = c - ctx.c0, i = rr * rw + cc, x = c * m;
         const h = H[i];
-        if (ctx.WS[i] > h + 0.02) { const wk = ctx.WK[i]; out[k++] = wk === WK_LAKE ? B_LAKE : wk === WK_RIVER ? B_RIVER : wk === WK_POND ? B_POND : wk === WK_SWAMP ? B_SWAMP : B_OCEAN; continue; }
+        const bo = ctx.BO[i];
+        if (ctx.WS[i] > h + 0.02) { const wk = ctx.WK[i]; out[k++] = bo <= B_SWAMP ? bo : wk === WK_LAKE ? B_LAKE : wk === WK_RIVER ? B_RIVER : wk === WK_POND ? B_POND : wk === WK_SWAMP ? B_SWAMP : B_OCEAN; continue; }
         if (ctx.TAG[i] === TAG_PATH) { out[k++] = B_DESERT; continue; }
         const cl = Math.max(0, cc - 1), cr = Math.min(rw - 1, cc + 1);
         const gx = (H[rr * rw + cr] - H[rr * rw + cl]) / ((cr - cl) * m || 1), gy = (H[rd * rw + cc] - H[ru * rw + cc]) / ((rd - ru) * m || 1);
         const g = Math.sqrt(gx * gx + gy * gy);
         const n = NZ[k];
+        if (bo !== 255 && bo > B_SWAMP ? (bo === B_ROCK || g < tanRock * 1.25) : bo === B_SWAMP) { out[k++] = bo; continue; }   // painted (zones, dunes, meadow, swamp)
         if (g > tanRock + n * 0.08) out[k++] = B_ROCK;
         else if (h > snow + n * 18 && g < 1.1) out[k++] = B_SNOW;
         else if (h < sea + 2.2 + n * 0.8 && g < 0.35) out[k++] = B_DESERT;
@@ -1120,6 +1495,8 @@ function terrainCore() {
       case "valley": { const p = splinePoly(f.pts, false, Math.max(2, hw / 8)); return wiggle(p, f.wid * 0.3 * P(f, "wiggle", 0.3), Math.max(60, f.wid * 2.5), s + 1, false, false); }
       case "river": { const p = splinePoly(f.pts, false, Math.max(1.5, Math.min(4, hw / 2))); return wiggle(p, f.wid * 3 * P(f, "meander", 0.5), Math.max(40, f.wid * 10), s + 1, true, false); }
       case "shoreline": { const p = splinePoly(f.pts, true, 6); return wiggle(p, f.wid * 0.25 * P(f, "rough", 0.5), 140, s + 1, false, true); }
+      case "escarpment": return escPoly(f);
+      case "ravine": return ravPoly(f);
       default: return splinePoly(f.pts || [], !!f.closed, 3);
     }
   }
@@ -1134,29 +1511,30 @@ const DEMO_PROJECT = {"format":"terrain-maker-project","version":1,"name":"demo_
 // so exported files keep their meaning). game: terrain color; water biomes are drawn with
 // one water color in this editor (sea, lake and river look the same).
 const BIOMES = [
-  { name: "Ocean",  key: [ 30,  70, 255], game: [ 70, 120, 118], water: true, wcol: [ 38, 150, 172, 0.62] },
-  { name: "Lake",   key: [ 60, 160, 255], game: [ 90, 118, 100], water: true, wcol: [ 50, 172, 180, 0.70] },
-  { name: "River",  key: [  0, 230, 255], game: [ 90, 118, 100], water: true, wcol: [ 50, 172, 180, 0.70] },
-  { name: "Pond",   key: [  0, 255, 190], game: [ 84, 110,  70], water: true, wcol: [ 62, 160, 140, 0.65] },
-  { name: "Swamp",  key: [150, 170,  60], game: [ 92, 104,  52], water: true, wcol: [100, 120,  60, 0.45] },
-  { name: "Desert", key: [255, 225, 120], game: [226, 196, 132] },
-  { name: "Snow",   key: [185, 220, 255], game: [240, 236, 226] },
-  { name: "Plains", key: [160, 255,  40], game: [122, 178,  52] },
-  { name: "Rock",   key: [255, 255, 255], game: [150,  96,  58] },
-  { name: "Forest", key: [ 60, 255,  90], game: [ 36, 112,  56] },
+  { name: "Ocean",  key: [ 30,  70, 255], game: [ 84, 140, 140], water: true, wcol: [ 58, 170, 184, 0.62] },
+  { name: "Lake",   key: [ 60, 160, 255], game: [ 96, 140, 112], water: true, wcol: [ 70, 186, 190, 0.70] },
+  { name: "River",  key: [  0, 230, 255], game: [ 96, 140, 112], water: true, wcol: [ 70, 186, 190, 0.70] },
+  { name: "Pond",   key: [  0, 255, 190], game: [ 92, 132,  92], water: true, wcol: [ 78, 176, 158, 0.65] },
+  { name: "Swamp",  key: [150, 170,  60], game: [110, 128,  74], water: true, wcol: [112, 140,  84, 0.45] },
+  { name: "Desert", key: [255, 225, 120], game: [236, 208, 154] },
+  { name: "Snow",   key: [185, 220, 255], game: [246, 240, 240] },
+  { name: "Plains", key: [160, 255,  40], game: [132, 196,  84] },
+  { name: "Rock",   key: [255, 255, 255], game: [160, 122,  94] },
+  { name: "Forest", key: [ 60, 255,  90], game: [ 52, 138,  84] },
 ];
 const B_ROCK = 8, B_SWAMP = 4;
-const WATER_RGB = [44, 152, 165];             // the one water color (sea, lakes, rivers, falls): turquoise
-const LANDMARK_TYPES = ["cliff_walkway", "rock_arch", "crashed_wreck", "stranded_platform"];
+const WATER_RGB = [64, 178, 186];             // the one water color (sea, lakes, rivers, falls): turquoise
+const LANDMARK_TYPES = ["cliff_walkway", "rock_arch", "crashed_wreck", "stranded_platform", "rock_overhang", "lookout_tower"];   // append only (ids are exported)
 const RIVER_DEPTH = 0.8, SWAMP_DEPTH = 0.25, MIN_LAKE_DEPTH = 0.3, VMIN = 0.3;
 const SAVE_KEY = "terrainMaker.cad.v1";
 const UNDO_MAX = 200;
 const SUN = (() => { const v = [0.3, 0.5, 0.8], l = Math.hypot(...v); return v.map((x) => x / l); })();
 //----- Palette -----||
-// Stylized low-poly look: warm sun, cool shadows, a blue-to-cream sky, turquoise water.
-const FOG_COL = [0.84, 0.86, 0.80];           // = the sky at the horizon
-const SKY_TOP = [0.25, 0.54, 0.84], SKY_HOR = FOG_COL;
-const SUN_COL = [0.80, 0.70, 0.55], AMB_COL = [0.40, 0.45, 0.60];
+// Stylized low-poly diorama look: soft pastel-saturated colors, fresh greens, warm sand,
+// turquoise water, gentle warm sun with lavender shadows, a blue-to-blush sky.
+const FOG_COL = [0.92, 0.87, 0.88];           // = the sky at the horizon (soft blush)
+const SKY_TOP = [0.42, 0.62, 0.88], SKY_HOR = FOG_COL;
+const SUN_COL = [0.86, 0.75, 0.62], AMB_COL = [0.50, 0.47, 0.64];
 
 const CORE = terrainCore();
 const $ = (id) => document.getElementById(id);
@@ -1179,12 +1557,14 @@ function toast(msg, ms) {
 // Drawer groups; labels and units of each type's parameters. The shapes themselves live in
 // terrainCore() (shared with the worker).
 const DRAWER = [
-  ["Landforms", ["mountain", "range", "hill", "plateau", "terraces", "valley"]],
-  ["Water", ["river", "lake", "waterfall", "shoreline"]],
-  ["Walls + paths", ["cliff", "worldedge", "trail"]],
+  ["Landforms", ["mountain", "range", "hill", "plateau", "terraces", "valley", "crater", "dunes", "meadow", "escarpment", "ravine"]],
+  ["Water", ["river", "lake", "waterfall", "shoreline", "cove", "swamp", "seastack"]],
+  ["Walls + paths", ["cliff", "worldedge", "trail", "walkway"]],
+  ["Landmarks", ["arch", "overhang", "crash", "platform", "lookout"]],
+  ["Paint", ["biome"]],
 ];
-const SOON = ["Crater / caldera", "Dunes", "Meadow", "Escarpment", "Sea stack", "Arch", "Overhang", "Swamp", "Cove", "Ravine", "Crash site", "Cliff walkway", "Platform", "Lookout", "Biome zones"];
-const TYPE_ABBR = { mountain: "MTN", range: "RNG", hill: "HIL", plateau: "PLT", terraces: "TER", valley: "VAL", river: "RIV", lake: "LAK", waterfall: "FAL", shoreline: "SHR", cliff: "CLF", worldedge: "EDG", trail: "TRL" };
+const TYPE_ABBR = { mountain: "MTN", range: "RNG", hill: "HIL", plateau: "PLT", terraces: "TER", valley: "VAL", river: "RIV", lake: "LAK", waterfall: "FAL", shoreline: "SHR", cliff: "CLF", worldedge: "EDG", trail: "TRL",
+  crater: "CRT", dunes: "DUN", meadow: "MDW", escarpment: "ESC", ravine: "RAV", cove: "COV", swamp: "SWP", seastack: "STK", walkway: "WLK", arch: "ARC", overhang: "OVH", crash: "CRS", platform: "PLF", lookout: "LKT", biome: "BIO" };
 // [label, unit, step, min, max]
 const PARAMS = {
   sharp: ["Sharpness", "", 0.05, 0, 1], ridges: ["Ridges", "", 0.05, 0, 1], warp: ["Warp", "", 0.05, 0, 1.5], detail: ["Rock detail", "", 0.05, 0, 1],
@@ -1199,6 +1579,13 @@ const PARAMS = {
   style: ["Style", "", 1, 0, 9], lobes: ["Lobes (outline)", "", 0.05, 0, 1.5], tilt: ["Tilt (cuesta)", "", 0.05, 0, 0.9], cliffs: ["Cliff walls (massif)", "", 0.05, 0, 1], crater: ["Caldera (volcano)", "", 0.01, 0.05, 0.6], bands: ["Cliff bands", "", 1, 0, 8],
   tiers: ["Tiers", "", 1, 1, 4], flat: ["Flat top", "", 0.05, 0, 1],
   beach: ["Beach width", "m", 1, 0, 200], beachH: ["Beach height", "m", 0.1, 0, 10], seaDepth: ["Sea depth", "m", 1, 1, 200],
+  depth: ["Floor depth", "m", 1, 0, 300], rim: ["Rim width", "", 0.05, 0.1, 0.6], lake: ["Crater lake", "0/1", 1, 0, 1],
+  wave: ["Spacing", "m", 1, 8, 400], asym: ["Slip face", "", 0.05, 0.5, 0.95], level: ["Levelling", "", 0.05, 0, 1],
+  biome: ["Biome", "", 1, 0, 9], edge: ["Edge noise", "", 0.05, 0, 0.5], wet: ["Wetness", "", 0.05, 0, 1], hummocks: ["Hummocks", "", 0.05, 0, 1.5],
+  mouth: ["Mouth width", "", 0.05, 0.1, 0.9], count: ["Count", "", 1, 1, 9], taper: ["Rounded top", "", 0.05, 0, 1],
+  thick: ["Span thickness", "", 0.05, 0.1, 0.6], jut: ["Jut", "m", 0.5, 1, 60], impact: ["Impact crater", "", 0.05, 0, 1], debris: ["Debris", "", 0.05, 0, 1],
+  pad: ["Level pad", "0/1", 1, 0, 1], mound: ["Pad mound", "m", 0.5, 0, 20], scarp: ["Scarp width", "m", 1, 1, 200], back: ["Back slope", "", 0.05, 0, 1],
+  creek: ["Creek", "0/1", 1, 0, 1], spacing: ["Plank spacing", "m", 0.5, 1, 50],
 };
 // What the X/Y/Z scales mean per type (meters).
 const SCALES = {
@@ -1206,7 +1593,11 @@ const SCALES = {
   spline: [["wid", "Width"], ["hgt", "Height (Z)"]],
 };
 const SCALE_LABEL = { lake: { hgt: "Depth (Z)" }, waterfall: { len: "Sample span", wid: "Sheet width", hgt: "Notch depth" }, river: { wid: "Channel width", hgt: "Bed depth" },
-  valley: { hgt: "Depth (Z)" }, trail: { wid: "Path width", hgt: "Unused" }, shoreline: { wid: "Coast width", hgt: "Land height" }, worldedge: { hgt: "Height (≥ 60)" } };
+  valley: { hgt: "Depth (Z)" }, trail: { wid: "Path width", hgt: "Unused" }, walkway: { wid: "Ledge width", hgt: "Unused" },
+  crater: { hgt: "Rim height" }, dunes: { hgt: "Dune height" }, meadow: { hgt: "Roll (Z)" }, escarpment: { wid: "Back slope width", hgt: "Step height" },
+  ravine: { hgt: "Depth (Z)" }, cove: { hgt: "Depth below sea" }, swamp: { hgt: "Hummock height" }, seastack: { hgt: "Height above Base Z" },
+  arch: { len: "Span (X)", hgt: "Height (Z)" }, overhang: { hgt: "Face height" }, crash: { hgt: "Furrow depth" }, platform: { hgt: "Deck height" },
+  lookout: { hgt: "Tower height" }, biome: { hgt: "Water depth" }, shoreline: { wid: "Coast width", hgt: "Land height" }, worldedge: { hgt: "Height (≥ 60)" } };
 const BLENDS = ["add", "max", "carve", "flatten"];
 
 //----- Project -----||
@@ -1291,6 +1682,36 @@ function hAtWorld(x, y) {          // bilinear height at world meters (first per
 function wsAtWorld(x, y) {
   const m = proj.mpp, c = clamp(Math.round(x / m), 0, N - 1), r = clamp(Math.round(N - 1 - y / m), 0, N - 1);
   return WS[r * N + c];
+}
+
+//----- Landmarks -----||
+// Structures the landmark features place: { type (LANDMARK_TYPES id), x, y, z, rot, f }
+// in world meters; z = the ground (or water) it stands on; rot = facing, degrees from +x.
+function landmarkList() {
+  const out = [], deg = (a) => Math.round((((a % 360) + 360) % 360) * 100) / 100;
+  for (const f of proj.features) {
+    const t = CORE.T[f.type]; if (!t || !t.landmark || f.hidden) continue;
+    const id = LANDMARK_TYPES.indexOf(t.landmark), m = META[f.id] || {};
+    if (f.type === "walkway") {
+      if (!f.pts || f.pts.length < 2) continue;
+      const P = CORE.polyOf(f), xy = P.xy, cum = P.cum, sp = Math.max(1, CORE.P(f, "spacing", 6));
+      let j = 0;
+      for (let d = sp / 2; d < P.len; d += sp) {
+        while (j < cum.length - 2 && cum[j + 1] < d) j++;
+        const u = (d - cum[j]) / ((cum[j + 1] - cum[j]) || 1), x = xy[2 * j] + (xy[2 * j + 2] - xy[2 * j]) * u, y = xy[2 * j + 1] + (xy[2 * j + 3] - xy[2 * j + 1]) * u;
+        out.push({ type: id, x, y, z: hAtWorld(x, y), rot: deg(Math.atan2(xy[2 * j + 3] - xy[2 * j + 1], xy[2 * j + 2] - xy[2 * j]) * 180 / Math.PI), f, len: sp });
+      }
+      continue;
+    }
+    const a = (f.rot || 0) * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a), loc = (u, v) => [f.x + u * ca - v * sa, f.y + u * sa + v * ca];
+    let p = [f.x, f.y], z, rot = f.rot || 0;
+    if (f.type === "overhang") { p = loc(0, -0.6 * f.wid / 2); z = (m.base !== undefined ? m.base : hAtWorld(f.x, f.y)) + f.hgt; rot -= 90; }
+    else if (f.type === "crash") { p = loc(0.72 * f.len / 2, 0); z = hAtWorld(p[0], p[1]); }
+    else if (f.type === "platform") z = Math.max(hAtWorld(f.x, f.y), wsAtWorld(f.x, f.y));
+    else z = m.base !== undefined ? m.base : hAtWorld(f.x, f.y);
+    out.push({ type: id, x: p[0], y: p[1], z, rot: deg(rot), f });
+  }
+  return out;
 }
 
 //----- Worker -----||
@@ -1390,10 +1811,6 @@ function renderDrawer() {
     }
     d.appendChild(box);
   }
-  const h = document.createElement("div"); h.className = "grp"; h.textContent = "Coming soon"; d.appendChild(h);
-  const box = document.createElement("div"); box.className = "items";
-  for (const s of SOON) { const b = document.createElement("button"); b.textContent = s; b.className = "soon"; b.disabled = true; b.title = "Coming soon"; box.appendChild(b); }
-  d.appendChild(box);
 }
 // New feature of a type at world (x, y), in its default shape.
 function makeFeature(type, x, y) {
@@ -1403,7 +1820,7 @@ function makeFeature(type, x, y) {
   const n = proj.features.filter((g) => g.type === type).length;
   if (n) f.name += " " + (n + 1);
   if (t.kind === "spline") {
-    const L = { range: 900, cliff: 500, worldedge: 1200, valley: 600, river: 700, trail: 300, shoreline: 700 }[type] || 500;
+    const L = { range: 900, cliff: 500, worldedge: 1200, valley: 600, river: 700, trail: 300, shoreline: 700, escarpment: 600, ravine: 400, walkway: 150 }[type] || 500;
     if (type === "shoreline" || (t.closable && f.closed)) {
       const pts = []; for (let k = 0; k < 8; k++) { const a = k / 8 * Math.PI * 2; pts.push([Math.round(x + Math.cos(a) * L), Math.round(y + Math.sin(a) * L * 0.85)]); }
       f.pts = pts; f.closed = true;
@@ -1412,6 +1829,7 @@ function makeFeature(type, x, y) {
   }
   if (type === "waterfall") snapWaterfall(f);
   if (f.blend === "max" || f.blend === "flatten") f.z = Math.round(hAtWorld(x, y) * 10) / 10;
+  if (type === "seastack") f.z = proj.sea;                  // columns rise from sea level
   return f;
 }
 function addFeature(f) {
@@ -1428,7 +1846,7 @@ function addFeature(f) {
 function snapWaterfall(f, maxD, crossOnly) {
   maxD = maxD || 150;
   const rivers = proj.features.filter((g) => g.type === "river" && !g.hidden && g.pts && g.pts.length > 1);
-  const walls = proj.features.filter((g) => (g.type === "cliff" || g.type === "worldedge" || g.type === "plateau" || g.type === "terraces") && !g.hidden);
+  const walls = proj.features.filter((g) => (g.type === "cliff" || g.type === "worldedge" || g.type === "plateau" || g.type === "terraces" || g.type === "escarpment") && !g.hidden);
   let best = null;
   for (const rv of rivers) {
     const P = CORE.polyOf(rv), xy = P.xy, m = xy.length / 2;
@@ -1610,6 +2028,7 @@ function renderProps() {
     if (f.type === "trail" && k === "hgt") continue;
     row(lab[k] || l, num(f[k], k === "hgt" ? 0.5 : 1, (v) => { f[k] = Math.max(k === "hgt" ? 0 : 1, v); }, { min: 0 }), "m", k);
   }
+  if (!t.noBlend) {
   H3("Blend");
   const bl = document.createElement("select");
   for (const b of BLENDS) { const o = document.createElement("option"); o.value = b; o.textContent = b; bl.appendChild(o); }
@@ -1618,6 +2037,7 @@ function renderProps() {
   bl.onchange = () => { pushUndo(); f.blend = bl.value; changed(); };
   row("Mode", bl);
   if (f.blend === "max" || f.blend === "flatten") row("Base Z", num(f.z || 0, 0.5, (v) => { f.z = v; }), "m");
+  }
   row("Falloff", num(f.falloff, 1, (v) => { f.falloff = Math.max(0, v); }), "m", "falloff");
   const bn = document.createElement("div"); bn.className = "note";
   bn.textContent = { add: "add: raises the ground by the shape.", max: "max: ground rises to Base Z + shape, never lowered.", carve: "carve: lowers the ground by the shape.", flatten: "flatten: pulls the ground to Base Z + shape.", shore: "shore: adds land inside the loop; overlapping shorelines merge into one island.", subtract: "subtract: cuts sea out of the land inside the loop (lagoon, bay)." }[f.blend] || "";
@@ -1627,7 +2047,7 @@ function renderProps() {
     H3("Shape");
     for (const k of keys) {
       const d = PARAMS[k] || [k, "", 0.05];
-      if (f.type === "cliff" || f.type === "worldedge") { if (k === "side") { addSide(f, row); continue; } }
+      if (f.type === "cliff" || f.type === "worldedge" || f.type === "escarpment") { if (k === "side") { addSide(f, row); continue; } }
       const opts = SELECTS[f.type + "." + k] || SELECTS[k];
       if (opts) {
         const st = document.createElement("select");
@@ -1695,7 +2115,12 @@ const SELECTS = {
   "hill.style": ["Dome", "Drumlin", "Knolls", "Rolling"],
   "terraces.style": ["Stepped hill", "Hillside (one side)", "Stepped ridge", "Amphitheater"],
   "lake.style": ["Round", "Kidney (bay)", "Arms", "Multi-basin", "Islands", "Pond"],
+  "crater.style": ["Bowl", "Caldera (flat floor)", "Nested cone", "Breached rim"],
+  "dunes.style": ["Transverse ridges", "Barchans (crescents)", "Linear (seif)"],
+  "seastack.style": ["Single", "Cluster", "Row"],
+  "biome.biome": null,                                        // filled from BIOMES below
 };
+SELECTS["biome.biome"] = BIOMES.map((b) => b.name);
 const pick = (vals, w) => ({ pick: vals, w });
 const ROLL = {
   // rot 180 = any heading; archetype picks (style) change the whole character
@@ -1718,6 +2143,23 @@ const ROLL = {
   river: { size: { wid: [0.7, 1.5], hgt: [0.7, 1.6] }, path: 0.12, pts: 0.1, params: { bank: [12, 50], meander: [0.15, 1.2], water: [1, 2.4], gorge: [0, 0.8] } },
   trail: { size: { wid: [0.8, 1.4] }, falloff: [3, 12], path: 0.04, pts: 0.05, params: { smooth: [20, 90] } },
   shoreline: { size: { wid: [0.8, 1.3], hgt: [0.7, 1.5] }, pts: 0.07, params: { beach: [12, 50], beachH: [0.8, 2.5], seaDepth: [12, 35], rough: [0.2, 1] } },
+  crater: { size: { len: [0.6, 1.5], wid: [0.6, 1.4], hgt: [0.4, 1.8] }, rot: 180, falloff: [15, 60], pos: 0.1,
+    params: { style: pick([0, 1, 2, 3]), lobes: [0.1, 0.9], depth: [6, 40], rim: [0.15, 0.45], lake: pick([0, 0, 1]) } },
+  dunes: { size: { len: [0.7, 1.4], wid: [0.7, 1.4], hgt: [0.5, 1.8] }, rot: 180, falloff: [30, 100], pos: 0.1,
+    params: { style: pick([0, 1, 2]), lobes: [0.2, 1.2], wave: [30, 110], asym: [0.6, 0.9], wiggle: [0.1, 1.2] } },
+  meadow: { size: { len: [0.7, 1.4], wid: [0.7, 1.4], hgt: [0.3, 2.5] }, rot: 180, falloff: [30, 100], pos: 0.1, params: { lobes: [0.3, 1.3], level: [0.4, 1] } },
+  biome: { size: { len: [0.7, 1.4], wid: [0.7, 1.4] }, rot: 180, pos: 0.1, params: { lobes: [0.3, 1.4], edge: [0.05, 0.35] } },
+  swamp: { size: { len: [0.7, 1.4], wid: [0.7, 1.4], hgt: [0.5, 1.8] }, rot: 180, falloff: [20, 70], pos: 0.1, params: { lobes: [0.3, 1.4], wet: [0.3, 0.8], hummocks: [0.2, 1.2] } },
+  cove: { size: { len: [0.7, 1.4], wid: [0.7, 1.4], hgt: [0.6, 1.6] }, rot: 25, pos: 0.05, params: { lobes: [0.2, 1.2], mouth: [0.15, 0.6], beach: [6, 30] } },
+  seastack: { size: { len: [0.6, 1.6], wid: [0.6, 1.6], hgt: [0.5, 1.7] }, rot: 180, pos: 0.15, params: { style: pick([0, 1, 1, 2]), count: pick([2, 3, 4, 5, 6, 7]), taper: [0, 0.9], rough: [0.2, 1.2] } },
+  arch: { size: { len: [0.7, 1.5], wid: [0.7, 1.4], hgt: [0.6, 1.5] }, rot: 180, params: { thick: [0.18, 0.45], rough: [0.2, 1] } },
+  overhang: { size: { len: [0.7, 1.5], wid: [0.7, 1.4], hgt: [0.6, 1.6] }, rot: 180, params: { jut: [4, 16], rough: [0.2, 1] } },
+  crash: { size: { len: [0.6, 1.5], wid: [0.7, 1.4], hgt: [0.6, 1.6] }, rot: 180, params: { impact: [0.1, 1], debris: [0.2, 1] } },
+  platform: { size: { len: [0.7, 1.4], wid: [0.7, 1.4], hgt: [0.5, 1.6] }, rot: 180, params: {} },
+  lookout: { size: { len: [0.8, 1.3], wid: [0.8, 1.3], hgt: [0.6, 1.6] }, rot: 180, params: { mound: [0, 3] } },
+  escarpment: { size: { wid: [0.6, 1.5], hgt: [0.5, 1.7] }, path: 0.12, pts: 0.12, params: { scarp: [6, 30], back: [0.2, 1], rough: [0.2, 1.2] } },
+  ravine: { size: { wid: [0.6, 1.6], hgt: [0.6, 1.6] }, path: 0.12, pts: 0.12, params: { steep: [0.5, 1], rough: [0.2, 1.2], wiggle: [0.1, 0.9], creek: pick([0, 1, 1]) } },
+  walkway: { size: { wid: [0.8, 1.3] }, falloff: [2, 6], path: 0.03, pts: 0.04, params: { smooth: [10, 40], spacing: [4, 9] } },
 };
 // After a roll: archetype-specific sizes (only for values that are not locked).
 const ROLL_AFTER = {
@@ -2159,6 +2601,13 @@ function drawOverlay() {
     drawOutline(ctx, f, s ? "#ffb547" : hover === f.id ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.45)", s);
   }
   ctx.globalAlpha = 1;
+  // landmark structures: a small marker with its facing
+  for (const L of landmarkList()) {
+    const p = w2s(L.x, L.y), a = L.rot * Math.PI / 180, r = L.len ? 2.5 : 4.5;
+    ctx.fillStyle = "#3a2414"; ctx.strokeStyle = "#ffe2b0"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.rect(p[0] - r, p[1] - r, 2 * r, 2 * r); ctx.fill(); ctx.stroke();
+    if (!L.len) { ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(p[0] + Math.cos(a) * 10, p[1] - Math.sin(a) * 10); ctx.stroke(); }
+  }
   const f = featById(sel);
   if (f) drawGizmo(ctx, f);
   if (placing) {
@@ -2582,6 +3031,7 @@ void main() {
   fallBuf = gl.createBuffer(); vaoF = gl.createVertexArray(); gl.bindVertexArray(vaoF);
   gl.bindBuffer(gl.ARRAY_BUFFER, fallBuf); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, 0);
   gl.bindVertexArray(null);
+  initLandmarks();
 }
 
 //----- 3D Camera -----||
@@ -2658,6 +3108,7 @@ function render3D() {
   gl.useProgram(prog3); common(U3);
   gl.uniform1i(U3.uH, 0); gl.uniform1i(U3.uB, 1); gl.uniform3fv(U3.uPal, PAL); gl.uniform3fv(U3.uSun, SUN);
   pass(U3);
+  drawLandmarks(M, fog); gl.bindVertexArray(vao3); gl.bindBuffer(gl.ARRAY_BUFFER, instBuf);   // the water pass reads the tile list again
   gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false); gl.disable(gl.CULL_FACE);
   gl.useProgram(progW); common(UW);
   gl.uniform1i(UW.uH, 0); gl.uniform1i(UW.uW, 2); gl.uniform3fv(UW.uWater, WCOL); gl.uniform3fv(UW.uSun, SUN);
@@ -2725,6 +3176,120 @@ function drawFalls(M, fog) {
   gl.uniformMatrix4fv(UF.uMVP, false, M.mvp); gl.uniform3fv(UF.uWater, WCOL); gl.uniform1f(UF.uTime, (performance.now() / 1000) % 1000);
   gl.uniform4fv(UF.uFog, fog); gl.uniform3fv(UF.uFogCol, FOG_COL); gl.uniform3fv(UF.uEye, M.eye);
   gl.drawArrays(gl.TRIANGLES, 0, v.length / 4);
+}
+
+//----- Landmark Meshes -----||
+// Simple flat-shaded structures for the landmark features (arch span, overhang slab,
+// wreck, platform, tower, walkway planks), rebuilt when the landmark list changes.
+let progL = null, UL = null, lmBuf = null, vaoL = null, lmKey = "", lmCount = 0;
+function initLandmarks() {
+  progL = makeProgram(`#version 300 es
+precision highp float;
+uniform mat4 uMVP;
+layout(location = 0) in vec3 aP; layout(location = 1) in vec3 aN; layout(location = 2) in vec3 aC;
+out vec3 vN, vC, vWorld;
+void main() { vN = aN; vC = aC; vWorld = aP; gl_Position = uMVP * vec4(aP, 1.0); }`, `#version 300 es
+precision highp float;
+uniform vec3 uSun;
+const vec3 SUNC = vec3(${SUN_COL.join(", ")}), AMBC = vec3(${AMB_COL.join(", ")});
+${FOG_GLSL}
+in vec3 vN, vC, vWorld; out vec4 o;
+void main() {
+  vec3 n = normalize(vN); float d = abs(dot(n, uSun));
+  vec3 col = vC * (AMBC + SUNC * 1.25 * d);
+  o = vec4(mix(col, uFogCol, fogK(vWorld)), 1.0);
+}`);
+  UL = uniforms(progL, ["uMVP", "uSun", "uFog", "uFogCol", "uEye"]);
+  lmBuf = gl.createBuffer(); vaoL = gl.createVertexArray(); gl.bindVertexArray(vaoL);
+  gl.bindBuffer(gl.ARRAY_BUFFER, lmBuf);
+  for (let k = 0; k < 3; k++) { gl.enableVertexAttribArray(k); gl.vertexAttribPointer(k, 3, gl.FLOAT, false, 36, k * 12); }
+  gl.bindVertexArray(null);
+}
+// A box: centre (in the landmark frame: u along rot, v across, z up), half sizes, pitch
+// (radians, nose up about v), then placed at the landmark's x, y, z and heading.
+function lmBox(o, L, cu, cv, cz, hu, hv, hz, pitch, col) {
+  const a = L.rot * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a), cp = Math.cos(pitch || 0), sp = Math.sin(pitch || 0);
+  const tf = (x, y, z) => { const xr = x * cp - z * sp, zr = x * sp + z * cp, u = cu + xr, v = cv + y; return [L.x + u * ca - v * sa, L.y + u * sa + v * ca, L.z + cz + zr]; };
+  const nr = (x, y, z) => { const xr = x * cp - z * sp, zr = x * sp + z * cp; return [xr * ca - y * sa, xr * sa + y * ca, zr]; };
+  const F = [[[1, 0, 0], [0, 1, 0], [0, 0, 1]], [[-1, 0, 0], [0, -1, 0], [0, 0, 1]], [[0, 1, 0], [-1, 0, 0], [0, 0, 1]], [[0, -1, 0], [1, 0, 0], [0, 0, 1]], [[0, 0, 1], [1, 0, 0], [0, 1, 0]], [[0, 0, -1], [-1, 0, 0], [0, 1, 0]]];
+  const hs = [hu, hv, hz];
+  for (const [n, s, t] of F) {
+    const c = [0, 1, 2].map((k) => n[k] * hs[k]), S = [0, 1, 2].map((k) => s[k] * hs[k]), Tt = [0, 1, 2].map((k) => t[k] * hs[k]);
+    const q = [[-1, -1], [1, -1], [1, 1], [-1, -1], [1, 1], [-1, 1]], N3 = nr(n[0], n[1], n[2]);
+    for (const [i, j] of q) { const p = tf(c[0] + S[0] * i + Tt[0] * j, c[1] + S[1] * i + Tt[1] * j, c[2] + S[2] * i + Tt[2] * j); o.push(p[0], p[1], p[2], N3[0], N3[1], N3[2], col[0], col[1], col[2]); }
+  }
+}
+const LM_ROCK = [0.50, 0.33, 0.21], LM_ROCK2 = [0.42, 0.28, 0.19], LM_WOOD = [0.56, 0.39, 0.22], LM_WOOD2 = [0.40, 0.27, 0.16], LM_METAL = [0.66, 0.68, 0.70], LM_DARK = [0.24, 0.24, 0.26], LM_ROOF = [0.62, 0.20, 0.16];
+function landmarkMesh(list) {
+  const o = [];
+  for (const L of list) {
+    const f = L.f, P = (k, d) => CORE.P(f, k, d);
+    switch (LANDMARK_TYPES[L.type]) {
+      case "rock_arch": {
+        const pw = clamp(f.wid / f.len * 0.75, 0.1, 0.32), a = (1 - pw) * f.len / 2 + 1, th = Math.max(1.5, P("thick", 0.3) * f.hgt), n = 14;
+        for (let k = 0; k < n; k++) {
+          const t0 = k / n, t1 = (k + 1) / n, u0 = -a + 2 * a * t0, u1 = -a + 2 * a * t1, z0 = f.hgt - th * 0.5 + th * 0.7 * Math.sin(Math.PI * t0), z1 = f.hgt - th * 0.5 + th * 0.7 * Math.sin(Math.PI * t1);
+          lmBox(o, L, (u0 + u1) / 2, 0, (z0 + z1) / 2, (u1 - u0) / 2 * 1.15, f.wid * 0.42 * (0.85 + 0.15 * Math.sin(k * 2.1)), th / 2, Math.atan2(z1 - z0, u1 - u0), k & 1 ? LM_ROCK : LM_ROCK2);
+        }
+        break;
+      }
+      case "rock_overhang": {
+        const jut = P("jut", 10), th = Math.max(1.5, f.hgt * 0.16);
+        lmBox(o, L, jut / 2 - 1, 0, -th / 2, jut / 2 + 2, f.len * 0.42, th / 2, -0.05, LM_ROCK2);
+        lmBox(o, L, jut * 0.35, f.len * 0.12, -th * 1.1, jut * 0.3, f.len * 0.22, th * 0.4, 0, LM_ROCK);
+        break;
+      }
+      case "crashed_wreck": {
+        const Ln = clamp(f.wid * 0.9, 8, 60), r = Ln * 0.09;
+        lmBox(o, L, 0, 0, r * 0.6, Ln / 2, r, r, 0.18, LM_METAL);                              // fuselage, nose dug in
+        lmBox(o, L, -Ln * 0.05, Ln * 0.25, r * 0.9, Ln * 0.11, Ln * 0.26, r * 0.12, 0.1, LM_METAL); // wing
+        lmBox(o, L, Ln * 0.15, -Ln * 0.18, -r * 0.2, Ln * 0.09, Ln * 0.14, r * 0.12, -0.35, LM_DARK); // broken wing
+        lmBox(o, L, -Ln * 0.47, 0, r * 2.0, Ln * 0.07, r * 0.12, r * 1.1, 0.2, LM_METAL);         // tail fin
+        break;
+      }
+      case "stranded_platform": {
+        const hu = f.len / 2, hv = f.wid / 2, h = Math.max(1, f.hgt), lg = Math.max(0.3, Math.min(hu, hv) * 0.06);
+        lmBox(o, L, 0, 0, h, hu, hv, 0.35, 0, LM_WOOD);
+        for (const su of [-1, 1]) for (const sv of [-1, 1]) lmBox(o, L, su * (hu - lg * 2), sv * (hv - lg * 2), h / 2 - 1, lg, lg, h / 2 + 1, 0, LM_WOOD2);
+        lmBox(o, L, 0, hv - 0.1, h + 0.9, hu, 0.08, 0.5, 0, LM_WOOD2); lmBox(o, L, 0, -hv + 0.1, h + 0.9, hu, 0.08, 0.5, 0, LM_WOOD2);
+        lmBox(o, L, -hu * 0.4, 0, h + 1.6, hu * 0.3, hv * 0.4, 1.25, 0, LM_ROOF);                // hut
+        break;
+      }
+      case "lookout_tower": {
+        const s = Math.max(1.5, Math.min(f.len, f.wid) * 0.18), h = Math.max(3, f.hgt), lg = Math.max(0.2, s * 0.08);
+        for (const su of [-1, 1]) for (const sv of [-1, 1]) lmBox(o, L, su * s * 0.8, sv * s * 0.8, h * 0.4, lg, lg, h * 0.42, 0, LM_WOOD2);
+        lmBox(o, L, 0, 0, h * 0.4, s * 0.8, lg * 0.6, lg * 0.6, 0, LM_WOOD2);
+        lmBox(o, L, 0, 0, h * 0.82, s, s, 0.25, 0, LM_WOOD);
+        lmBox(o, L, 0, 0, h * 0.82 + 1.1, s * 0.95, s * 0.95, 0.85, 0, LM_WOOD);
+        lmBox(o, L, 0, 0, h * 0.82 + 2.3, s * 1.15, s * 1.15, 0.35, 0, LM_ROOF);
+        lmBox(o, L, 0, 0, h * 0.82 + 2.9, s * 0.6, s * 0.6, 0.3, 0, LM_ROOF);
+        break;
+      }
+      case "cliff_walkway": {
+        const hw = f.wid / 2 + 0.3, hl = (L.len || 6) / 2;
+        lmBox(o, L, 0, 0, 0.25, hl * 0.95, hw, 0.12, 0, LM_WOOD);
+        lmBox(o, L, -hl * 0.9, hw, 0.8, 0.1, 0.1, 0.65, 0, LM_WOOD2);
+        lmBox(o, L, 0, hw, 1.35, hl, 0.06, 0.06, 0, LM_WOOD2);
+        break;
+      }
+    }
+  }
+  return o;
+}
+function drawLandmarks(M, fog) {
+  if (!progL) initLandmarks();
+  const list = landmarkList();
+  const key = JSON.stringify(list.map((l) => [l.type, l.x, l.y, l.z, l.rot, l.len, l.f.len, l.f.wid, l.f.hgt, l.f.params]));
+  if (key !== lmKey) {
+    const v = landmarkMesh(list); lmKey = key; lmCount = v.length / 9;
+    gl.bindBuffer(gl.ARRAY_BUFFER, lmBuf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.STATIC_DRAW);
+  }
+  if (!lmCount) return;
+  gl.useProgram(progL); gl.bindVertexArray(vaoL);
+  gl.uniformMatrix4fv(UL.uMVP, false, M.mvp); gl.uniform3fv(UL.uSun, SUN);
+  gl.uniform4fv(UL.uFog, fog); gl.uniform3fv(UL.uFogCol, FOG_COL); gl.uniform3fv(UL.uEye, M.eye);
+  gl.disable(gl.CULL_FACE);
+  gl.drawArrays(gl.TRIANGLES, 0, lmCount);
 }
 
 //----- 3D + Walk Input -----||
@@ -3038,14 +3603,16 @@ function waterGrid(S, maxQ) {
   return q;
 }
 function packedGrid(S) { const q = quantHeights(S, 4095), out = new Uint16Array(H.length); for (let i = 0; i < out.length; i++) out[i] = (q[i] << 4) | (B[i] & 15); return out; }
-// Waterfalls from the waterfall features (world meters, z absolute); no landmarks yet.
+// Waterfalls from the waterfall features and landmarks from the landmark features
+// (world meters, z absolute).
 function featWorld() {
   const falls = [];
   for (const f of proj.features) {
     const m = META[f.id];
     if (f.type === "waterfall" && !f.hidden && m && m.drop > 0) falls.push([f.x, f.y, m.top, m.bottom, ((f.rot % 360) + 360) % 360, f.wid]);
   }
-  return { falls, landmarks: [] };
+  const landmarks = landmarkList().map((l) => [l.type, l.x, l.y, l.z, l.rot]);
+  return { falls, landmarks };
 }
 function hFeatures(L, name) {
   const fw = featWorld(), row = (a) => `    { ${a.map((v) => ff(+(+v).toFixed(3))).join(", ")} },`;
@@ -3070,8 +3637,8 @@ function hFeatures(L, name) {
   (fw.falls.length ? fw.falls : [[0, 0, 0, 0, 0, 0]]).forEach((a) => L.push(row(a)));
   L.push(`};`);
   L.push(`static const int   ${name}_landmark_count = ${fw.landmarks.length};`);
-  L.push(`static const float ${name}_landmarks[1][5] = {`);
-  L.push(row([0, 0, 0, 0, 0]));
+  L.push(`static const float ${name}_landmarks[${Math.max(1, fw.landmarks.length)}][5] = {`);
+  (fw.landmarks.length ? fw.landmarks : [[0, 0, 0, 0, 0]]).forEach((a) => L.push(row(a)));
   L.push(`};`);
   L.push(``);
 }
@@ -3212,6 +3779,7 @@ function buildBin(fmt) {
     dv.setUint32(featAt + 4, 1, true); dv.setUint32(featAt + 8, fw.falls.length, true); dv.setUint32(featAt + 12, fw.landmarks.length, true);
     let o = featAt + 16;
     for (const a of fw.falls) { a.forEach((v, j) => dv.setFloat32(o + j * 4, j === 2 || j === 3 ? v - S.minH : v, true)); o += 24; }
+    for (const a of fw.landmarks) { dv.setUint32(o, a[0], true); dv.setFloat32(o + 4, a[1], true); dv.setFloat32(o + 8, a[2], true); dv.setFloat32(o + 12, a[3] - S.minH, true); dv.setFloat32(o + 16, a[4], true); o += 20; }
   }
   return u8;
 }
@@ -3438,7 +4006,7 @@ function boot() {
 window.TM = {
   get proj() { return proj; }, get H() { return H; }, get WS() { return WS; }, get B() { return B; }, get N() { return N; }, get META() { return META; },
   get last() { return WM.last; }, get stats3() { return stats3; }, get sel() { return sel; }, V2, CAM, WALK, w2s, s2w, render3D, request3D, gizmoOf,
-  newIsland, curveCheck, mulberry, get lastIsland() { return lastIsland; },
+  newIsland, curveCheck, mulberry, get lastIsland() { return lastIsland; }, makeFeature, addFeature, landmarkList,
   whenBuilt, loadProject, changed, select, setView, buildBin, buildExportH, readGameFile, applyImport, rerollSel, featById, pushUndo, undo, redo, snapWaterfall, fitView, draw2D,
   setMpp(v) { proj.mpp = v; setGrid(); changed(); return whenBuilt(); },
   bench3D(n) { const t = []; for (let k = 0; k < n; k++) { const a = performance.now(); render3D(); gl.finish(); t.push(performance.now() - a); } t.sort((a, b) => a - b); return { median: t[t.length >> 1], min: t[0], max: t[t.length - 1], stats: stats3 }; },
