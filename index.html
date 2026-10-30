@@ -169,9 +169,9 @@ function terrainCore() {
   const lerp = (a, b, t) => a + (b - a) * t;
   const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
   const NO_WATER = -1e4;
-  const WK_SEA = 1, WK_LAKE = 2, WK_RIVER = 3;
+  const WK_SEA = 1, WK_LAKE = 2, WK_RIVER = 3, WK_POND = 4, WK_SWAMP = 5;
   const TAG_PATH = 1;
-  const B_OCEAN = 0, B_LAKE = 1, B_RIVER = 2, B_DESERT = 5, B_SNOW = 6, B_PLAINS = 7, B_ROCK = 8, B_FOREST = 9;
+  const B_OCEAN = 0, B_LAKE = 1, B_RIVER = 2, B_POND = 3, B_SWAMP = 4, B_DESERT = 5, B_SNOW = 6, B_PLAINS = 7, B_ROCK = 8, B_FOREST = 9;
 
   //----- Noise -----||
   function hi(ix, iy, s) {
@@ -453,6 +453,30 @@ function terrainCore() {
   }
   const minR = (f) => Math.min(f.len, f.wid) / 2;
 
+  //----- Shape Recipes -----||
+  // Seeded shape randomness shared by the point features (same seed = same shape).
+  const h01 = (s, k) => hi(k, 7919, s) / 4294967296;
+  const TAU = Math.PI * 2;
+  const angD = (a, b) => { let d = (a - b) % TAU; if (d > Math.PI) d -= TAU; if (d < -Math.PI) d += TAU; return d; };
+  // Footprint: outline radius vs angle, 1 + seeded angular harmonics 2-5 (lobes 0 = the
+  // plain ellipse, 1 = strongly lobed, bean, clover or triangular outlines). Tabled per degree.
+  function lobeFn(s, lobes) {
+    const tab = new Float32Array(361);
+    const amp = [0.3, 0.2, 0.1, 0.06].map((a, j) => lobes * a * (0.3 + 0.7 * h01(s, 2 + j))), ph = [0, 1, 2, 3].map((j) => h01(s, 22 + j) * TAU);
+    for (let d = 0; d <= 360; d++) { const an = d / 180 * Math.PI; let e = 1; for (let j = 0; j < 4; j++) e += amp[j] * Math.cos((j + 2) * an + ph[j]); tab[d] = Math.max(0.5, e); }
+    let mx = 0; for (let d = 0; d <= 360; d++) mx = Math.max(mx, tab[d]); for (let d = 0; d <= 360; d++) tab[d] /= mx;   // never past the box
+    return (an) => { let d = (an / Math.PI * 180) % 360; if (d < 0) d += 360; const i = d | 0, fr = d - i; return tab[i] + (tab[i + 1] - tab[i]) * fr; };
+  }
+  // n seeded blobs in the unit disk: [u, v, radius, height]; the first is the main one.
+  function subPeaks(s, n, rMin, rMax, spread) {
+    const o = [];
+    for (let j = 0; j < n; j++) {
+      const a = h01(s, 40 + j) * TAU, d = spread * (j === 0 ? 0.35 * h01(s, 60) : 0.45 + 0.55 * Math.sqrt(h01(s, 60 + j)));
+      o.push([Math.cos(a) * d, Math.sin(a) * d, rMin + (rMax - rMin) * h01(s, 80 + j), j === 0 ? 1 : 0.5 + 0.45 * h01(s, 100 + j)]);
+    }
+    return o;
+  }
+
   // Coarse noise per feature: big shapes on a world grid (fast), fine detail per pixel.
   function eachLocalArr(ctx, f, R, fn) {
     const a = f.rot * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a), hu = f.len / 2, hv = f.wid / 2;
@@ -460,10 +484,12 @@ function terrainCore() {
     each(ctx, R, (i, x, y) => { const dx = x - f.x, dy = y - f.y; fn(i, k++, (dx * ca + dy * sa) / hu, (-dx * sa + dy * ca) / hv, x, y); });
   }
   T.mountain = {
-    kind: "point", label: "Mountain", blend: "add",
-    def: { len: 700, wid: 560, hgt: 220, falloff: 60, params: { style: 0, sharp: 0.6, ridges: 0.6, warp: 0.5, detail: 0.5, cliffs: 0.6, crater: 0.25, bands: 0 } },
+    kind: "point", label: "Mountain", fresh: { lobes: 0.4 }, blend: "add",
+    def: { len: 700, wid: 560, hgt: 220, falloff: 60, params: { style: 0, lobes: 0, peaks: 3, sharp: 0.6, ridges: 0.6, warp: 0.5, detail: 0.5, cliffs: 0.6, crater: 0.25, bands: 0 } },
     // style: 0 peak, 1 massif (level top, cliff walls on some sides, ramps on others),
-    // 2 ridge (a crest along the length), 3 volcanic cone with a caldera.
+    // 2 ridge (a crest along the length), 3 volcanic cone with a caldera, 4 multi-peak
+    // (2-6 seeded summits), 5 cirque (horseshoe of peaks around a bowl, open on one side),
+    // 6 spires (sharp needles on a low plinth). lobes: how irregular the footprint is.
     // bands: cliff bands / ledges stepped into the flanks (0 = none).
     bbox: (f) => pointBB(f, 1.12),
     apply(ctx, f, R) {
@@ -472,17 +498,35 @@ function terrainCore() {
       const rid = P(f, "ridges", 0.6) * (style === 1 ? 0.25 : style === 3 ? 0.6 : 1);
       const rm = minR(f), wave = Math.max(f.len, f.wid) * 0.45, fo = Math.max(1, f.falloff);
       // the summit sits off-centre by the seed, so rerolls change the silhouette
-      const pu = noise1(1.7, s) * 0.25, pv = noise1(4.1, s) * 0.25;
+      const pu = noise1(1.7, s) * 0.25, pv = noise1(4.1, s) * 0.25, LB = lobeFn(s, clamp(P(f, "lobes", 0), 0, 1.5));
+      const np = clamp(Math.round(P(f, "peaks", 3)), 1, 9);
+      const PK = style === 4 ? subPeaks(s, Math.max(2, np), 0.38, 0.62, 0.62) : style === 6 ? subPeaks(s + 9, np + 3, 0.1, 0.22, 0.72) : null;
+      const gap = h01(s, 5) * TAU, gapW = 0.6 + 0.5 * h01(s, 6);
       const WU = coarse(ctx, R, 4, (x, y) => warp * 0.35 * fbm(x, y, s + 11, wave, 3));
       const WV = coarse(ctx, R, 4, (x, y) => warp * 0.35 * fbm(x, y, s + 23, wave, 3));
       const RD = coarse(ctx, R, 2, (x, y) => ridged(x + warp * 0.35 * rm * fbm(x, y, s + 11, wave, 2), y + warp * 0.35 * rm * fbm(x, y, s + 23, wave, 2), s + 37, wave * 0.55, 5, 10));
       eachLocalArr(ctx, f, R, (i, k, u, v, x, y) => {
         const c0 = 1 - Math.min(1, Math.hypot(u, v)), off = style === 0 || style === 2 ? 1 : 0;
         const du = u + WU[k] - pu * c0 * off, dv = v + WV[k] - pv * c0 * off;
-        const r = style === 2 ? Math.hypot(Math.max(0, Math.abs(du) - 0.5) / 0.5, dv) : Math.hypot(du, dv);
+        const an0 = Math.atan2(dv, du), lb = LB(an0);
+        const r = (style === 2 ? Math.hypot(Math.max(0, Math.abs(du) - 0.5) / 0.5, dv) : Math.hypot(du, dv)) / lb;
         if (r >= 1) return;
         const t = 1 - r;
         let base = Math.pow(t, 1 + sharp * 0.9) * (0.6 + 0.4 * t) + 0.12 * sstep(0, 0.6, t) * t;   // concave flanks, broad shoulders
+        if (PK) {
+          //----- Summits -----||
+          // several cones (multi-peak) or needles (spires) inside the footprint, with saddles
+          // between them and a plinth under all of them
+          const ex = style === 6 ? 0.7 + sharp * 0.5 : 1 + sharp * 0.9;
+          let m = 0;
+          for (const [pu2, pv2, pr, ph] of PK) { const q = 1 - Math.hypot(du - pu2 * lb, dv - pv2 * lb) / pr; if (q > 0) m = Math.max(m, ph * Math.pow(q, ex) * (0.6 + 0.4 * q)); }
+          base = (style === 6 ? 0.22 * Math.pow(t, 0.9) + m : Math.max(0.35 * base, m)) * sstep(0, 0.2, t);
+        } else if (style === 5) {
+          // cirque: a ring of high ground around a scooped bowl, breached on one side
+          const open = sstep(0.35, 1, Math.abs(angD(an0, gap)) / gapW), rim = Math.exp(-Math.pow((r - 0.5) / 0.26, 2));
+          const bowl = r < 0.5 ? 0.15 + 0.85 * sstep(0.05, 0.5, r) : 1;
+          base = Math.max(0.1 * t, rim * bowl * (0.06 + 0.94 * open) * (0.75 + 0.35 * sstep(0.3, 0.9, Math.abs(Math.sin(an0 * 1.5 + gap))))) * sstep(0, 0.25, t);
+        }
         if (style === 1) {
           //----- Massif profile -----||
           // (from the legacy generator) a level top (r < 0.55), then around the edge either a
@@ -499,7 +543,7 @@ function terrainCore() {
           base = r < crater ? rimH * (0.55 + 0.45 * sstep(crater * 0.45, crater, r)) : cone;
         }
         // spurs radiate from the summit: noise sampled around a circle, stretched outward
-        const th = Math.atan2(dv, du) + 1.5 * (WU[k] - WV[k]), K = 1.1 + 0.9 * rid, sc = K * (1 + 0.6 * r);
+        const th = an0 + 1.5 * (WU[k] - WV[k]), K = 1.1 + 0.9 * rid, sc = K * (1 + 0.6 * r);
         const rad = ridged(Math.cos(th) * sc, Math.sin(th) * sc, s + 71, 1, 3);
         let hgt = base * (1 - rid * 0.5 + rid * (0.4 * RD[k] + 0.45 * rad * sstep(0.03, 0.35, r)));
         if (bands > 0) hgt = hgt + (terrace(Math.max(0, hgt), bands + 1, 0.3) - hgt) * 0.8 * sstep(0, 0.15, t);   // cliff bands
@@ -510,43 +554,61 @@ function terrainCore() {
   };
 
   T.hill = {
-    kind: "point", label: "Hill", blend: "add",
-    def: { len: 320, wid: 260, hgt: 28, falloff: 40, params: { warp: 0.4, roll: 0.3 } },
+    kind: "point", label: "Hill", fresh: { lobes: 0.4 }, blend: "add",
+    def: { len: 320, wid: 260, hgt: 28, falloff: 40, params: { style: 0, lobes: 0, warp: 0.4, roll: 0.3 } },
+    // style: 0 dome, 1 drumlin (steep blunt end, long tail), 2 knolls (2-4 humps), 3 rolling
+    // (waves across the hill)
     bbox: (f) => pointBB(f, 1.1),
     apply(ctx, f, R) {
       const s = f.seed | 0, warp = P(f, "warp", 0.4), roll = P(f, "roll", 0.3), wave = Math.max(f.len, f.wid) * 0.5, fo = Math.max(1, f.falloff), rm = minR(f);
       const WU = coarse(ctx, R, 4, (x, y) => warp * 0.3 * fbm(x, y, s + 3, wave, 2)), WV = coarse(ctx, R, 4, (x, y) => warp * 0.3 * fbm(x, y, s + 9, wave, 2));
       const RL = coarse(ctx, R, 4, (x, y) => roll * 0.35 * fbm(x, y, s + 21, wave * 0.5, 3, 8));
+      const style = Math.round(P(f, "style", 0)), LB = lobeFn(s, clamp(P(f, "lobes", 0), 0, 1.5));
+      const KN = style === 2 ? subPeaks(s, 2 + (h01(s, 3) * 3 | 0), 0.4, 0.6, 0.55) : null, wv = 2 + h01(s, 4) * 3, wa = h01(s, 8) * TAU;
+      const lo = Math.min(1, P(f, "lobes", 0) * 1.5), hu = (h01(s, 11) - 0.5) * 0.6 * lo, hv = (h01(s, 12) - 0.5) * 0.6 * lo;   // older projects (no lobes): centred
       eachLocalArr(ctx, f, R, (i, k, u, v) => {
-        const r = Math.hypot(u + WU[k], v + WV[k]);
+        const c0 = Math.max(0, 1 - Math.hypot(u, v)), du = u + WU[k] - hu * c0, dv = v + WV[k] - hv * c0, lb = LB(Math.atan2(dv, du)), r = Math.hypot(du, dv) / lb;   // summit off-centre
         if (r >= 1) return;
         const c = Math.cos(r * Math.PI / 2);
-        blendAt(ctx.H, i, f.blend, c * c * (1 + RL[k]) * f.hgt, sstep(0, fo, (1 - r) * rm), f.z || 0);
+        let hh = c * c;
+        if (style === 1) hh = Math.pow(c, 1.2) * clamp(1 - 0.55 * (du / lb), 0.2, 1.35) / 1.35;      // drumlin: tall blunt head, long tail
+        else if (KN) { let m = 0; for (const [a, b, pr, ph] of KN) { const q = Math.hypot(du - a * lb, dv - b * lb) / pr; if (q < 1) { const cq = Math.cos(q * Math.PI / 2); m = Math.max(m, ph * cq * cq); } } hh = Math.max(0.3 * hh, m) * sstep(0, 0.15, 1 - r); }
+        else if (style === 3) hh *= 0.75 + 0.25 * Math.sin((du * Math.cos(wa) + dv * Math.sin(wa)) * wv * Math.PI);
+        blendAt(ctx.H, i, f.blend, hh * (1 + RL[k]) * f.hgt, sstep(0, fo, (1 - r) * rm), f.z || 0);
       });
     },
   };
 
   T.terraces = {
-    kind: "point", label: "Terraced hillside", blend: "add",
-    def: { len: 380, wid: 320, hgt: 48, falloff: 30, params: { step: 6, riser: 0.35, warp: 0.5 } },
+    kind: "point", label: "Terraced hillside", fresh: { lobes: 0.4 }, blend: "add",
+    def: { len: 380, wid: 320, hgt: 48, falloff: 30, params: { style: 0, lobes: 0, step: 6, riser: 0.35, warp: 0.5 } },
+    // style: 0 round stepped hill, 1 hillside (steps on one side only, a smooth slope behind),
+    // 2 stepped ridge (long crest), 3 amphitheater (steps climbing around a bowl)
     bbox: (f) => pointBB(f, 1.12),
     apply(ctx, f, R) {
       const s = f.seed | 0, step = Math.max(0.5, P(f, "step", 6)), riser = clamp(P(f, "riser", 0.35), 0.05, 1), warp = P(f, "warp", 0.5);
       const wave = Math.max(f.len, f.wid) * 0.4, fo = Math.max(1, f.falloff), rm = minR(f), n = f.hgt / step;
       const WU = coarse(ctx, R, 2, (x, y) => warp * 0.3 * fbm(x, y, s + 3, wave, 3)), WV = coarse(ctx, R, 2, (x, y) => warp * 0.3 * fbm(x, y, s + 9, wave, 3));
+      const style = Math.round(P(f, "style", 0)), LB = lobeFn(s, clamp(P(f, "lobes", 0), 0, 1.5)), face = h01(s, 5) * TAU;
       eachLocalArr(ctx, f, R, (i, k, u, v, x, y) => {
-        const r = Math.hypot(u + WU[k], v + WV[k]);
+        const du = u + WU[k], dv = v + WV[k], an = Math.atan2(dv, du), lb = LB(an);
+        const r = (style === 2 ? Math.hypot(Math.max(0, Math.abs(du) - 0.45) / 0.55, dv) : Math.hypot(du, dv)) / lb;
         if (r >= 1.08) return;
-        const c = Math.cos(Math.min(1, r) * Math.PI / 2), base = Math.pow(c * c, 0.8);
-        const tz = terrace(base, n, riser);
+        const c = Math.cos(Math.min(1, r) * Math.PI / 2);
+        let base = Math.pow(c * c, 0.8);
+        if (style === 3) base *= 0.25 + 0.75 * sstep(0.1, 0.6, r) * sstep(0, 1, Math.abs(angD(an, face)) / 1.6);    // bowl open toward `face`
+        let tz = terrace(base, n, riser);
+        if (style === 1) tz += (base - tz) * sstep(-0.3, 0.3, Math.cos(an - face));                               // smooth back side
         blendAt(ctx.H, i, f.blend, tz * f.hgt + 0.3 * fbm(x, y, s + 19, 8, 2, 3), sstep(0, fo, (1 - r) * rm), f.z || 0);
       });
     },
   };
 
   T.plateau = {
-    kind: "point", label: "Plateau / mesa", blend: "max",
-    def: { len: 520, wid: 400, hgt: 70, falloff: 0, z: 0, params: { side: 30, ledges: 2, warp: 0.6, talus: 25, tiers: 1 } },
+    kind: "point", label: "Plateau / mesa", fresh: { lobes: 0.4 }, blend: "max",
+    def: { len: 520, wid: 400, hgt: 70, falloff: 0, z: 0, params: { lobes: 0, tilt: 0, side: 30, ledges: 2, warp: 0.6, talus: 25, tiers: 1 } },
+    // lobes: irregular outline (0 in older projects; new ones start at 0.4); tilt: the top slopes down along the length
+    // (a cuesta), 0 = level
     // tiers: stacked mesas, each level smaller and off-centre (from the legacy tier clusters)
     bbox: (f) => pointBB(f, 1.35),
     apply(ctx, f, R) {
@@ -554,8 +616,9 @@ function terrainCore() {
       const rm = minR(f), wave = rm * 0.9, tiers = clamp(Math.round(P(f, "tiers", 1)), 1, 4);
       const TU = [], TV = [], TK = [];
       for (let q = 1; q < tiers; q++) { TU.push(noise1(q * 3.1, s + 41) * 0.24 * q / tiers); TV.push(noise1(q * 5.3, s + 43) * 0.24 * q / tiers); TK.push(1 - q * 0.62 / tiers); }
+      const LB = lobeFn(s + 77, clamp(P(f, "lobes", 0), 0, 1.5)), tilt = clamp(P(f, "tilt", 0), 0, 0.9);
       eachLocal(ctx, f, R, (i, u, v, x, y) => {
-        const r = Math.hypot(u, v), a = Math.atan2(v, u);
+        const a = Math.atan2(v, u), r = Math.hypot(u, v) / LB(a);
         // outline radius wobbles with angle (seamless: noise sampled on a circle) plus fine cracks
         const edge = 1 + warp * (0.18 * perlin(Math.cos(a) * 1.6, Math.sin(a) * 1.6, s) + 0.07 * perlin(Math.cos(a) * 5, Math.sin(a) * 5, s + 7))
                        + warp * 0.03 * fbm(x, y, s + 13, 25, 3, 4);
@@ -575,17 +638,24 @@ function terrainCore() {
             if (dq > 0) { const fq = clamp(dq / side, 0, 1); p += terrace(sstep(0, 1, fq), ledges + 1, 0.7) / tiers; if (fq < 1) top = 0; }
           }
         }
-        blendAt(ctx.H, i, f.blend, (p + top) * f.hgt, 1, f.z || 0);
+        blendAt(ctx.H, i, f.blend, (p + top) * f.hgt * (1 - tilt * clamp(0.5 + 0.5 * u, 0, 1)), 1, f.z || 0);
       });
     },
   };
 
   T.lake = {
-    kind: "point", label: "Lake", blend: "carve", samples: true,
-    def: { len: 240, wid: 170, hgt: 6, falloff: 30, params: { warp: 0.5, shore: 0.35 } },
+    kind: "point", label: "Lake", fresh: { lobes: 0.4 }, blend: "carve", samples: true,
+    def: { len: 240, wid: 170, hgt: 6, falloff: 30, params: { style: 0, lobes: 0, warp: 0.5, shore: 0.35 } },
+    // style: 0 round, 1 kidney (one deep bay), 2 arms (long fingers off a central basin),
+    // 3 multi-basin (merged pools), 4 islands, 5 pond (pond biome)
     bbox: (f) => pointBB(f, 1.35),
     apply(ctx, f, R) {
       const s = f.seed | 0, warp = P(f, "warp", 0.5), shore = clamp(P(f, "shore", 0.35), 0.05, 0.9), rm = minR(f);
+      const style = Math.round(P(f, "style", 0)), LB = lobeFn(s + 5, clamp(P(f, "lobes", 0), 0, 1.5)), bay = h01(s, 5) * TAU;
+      const BS = style === 3 ? subPeaks(s, 2 + (h01(s, 3) * 2.99 | 0), 0.42, 0.6, 0.6) : null;
+      const AR = [];
+      if (style === 2) for (let j = 0, na = 2 + (h01(s, 4) * 2.99 | 0); j < na; j++) AR.push([bay + j * TAU / na + (h01(s, 50 + j) - 0.5) * 1.2, 0.75 + 0.3 * h01(s, 60 + j), 0.14 + 0.12 * h01(s, 70 + j)]);
+      const IS = style === 4 ? subPeaks(s + 3, 1 + (h01(s, 7) * 2.99 | 0), 0.16, 0.3, 0.45) : null;
       const w = R.c1 - R.c0 + 1, Q = new Float32Array((R.r1 - R.r0 + 1) * w);
       const a = f.rot * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a);
       // 1. warped radius per pixel; reference = lowest ground on the outline
@@ -593,7 +663,14 @@ function terrainCore() {
       each(ctx, R, (i, x, y) => {
         const dx = x - f.x, dy = y - f.y, u = (dx * ca + dy * sa) / (f.len / 2), v = (-dx * sa + dy * ca) / (f.wid / 2), an = Math.atan2(v, u);
         const e = 1 + warp * (0.2 * perlin(Math.cos(an) * 1.5, Math.sin(an) * 1.5, s) + 0.06 * perlin(Math.cos(an) * 4, Math.sin(an) * 4, s + 3));
-        const q = Math.hypot(u, v) / e; Q[k++] = q;
+        let q = Math.hypot(u, v) / (e * LB(an));
+        if (style === 1) q /= 1 - 0.6 * Math.exp(-Math.pow(angD(an, bay) / 0.6, 2));
+        else if (BS) { q = 9; for (const [bu, bv, br] of BS) q = Math.min(q, Math.hypot(u - bu, v - bv) / (br * e)); }
+        else if (AR.length) {
+          q /= 0.55;
+          for (const [aa, L, W] of AR) { const al = u * Math.cos(aa) + v * Math.sin(aa), pe = -u * Math.sin(aa) + v * Math.cos(aa); q = Math.min(q, Math.hypot((al - L / 2) / (L / 2), pe / (W * e * (1.1 - 0.5 * clamp(al / L, 0, 1))))); }
+        }
+        Q[k++] = q;
         if (q >= 0.97 && q < 1.03 && ctx.H[i] < ref) ref = ctx.H[i];
       });
       if (ref > 1e8) return;
@@ -605,13 +682,17 @@ function terrainCore() {
         const flat = ref + (h - ref) * sstep(0.85, 1 + fo, q);
         ctx.H[i] = Math.min(h, flat - f.hgt * bowl * (f.blend === "carve" || f.blend === "add" ? 1 : 1));
       });
+      // islands rise out of the bowl, 2-6 m above the outline
+      if (IS) eachLocal(ctx, f, R, (i, u, v) => {
+        for (const [iu, iv, ir, ih] of IS) { const q = Math.hypot(u - iu, v - iv) / ir; if (q < 1) ctx.H[i] = Math.max(ctx.H[i], ref - f.hgt + (f.hgt + 1.5 + 3 * ih) * sstep(0, 0.55, 1 - q)); }
+      });
       // 3. spill level: the lowest ground just outside the shore
       let lvl = 1e9; k = 0;
       each(ctx, R, (i) => { const q = Q[k++]; if (q >= 1.0 && q < 1.1 && ctx.H[i] < lvl) lvl = ctx.H[i]; });
       if (lvl > 1e8) return;
       lvl -= 0.05;
       k = 0;
-      each(ctx, R, (i) => { const q = Q[k++]; if (q < 1.15 && ctx.H[i] < lvl && lvl > ctx.WS[i]) { ctx.WS[i] = lvl; ctx.WK[i] = WK_LAKE; } });
+      each(ctx, R, (i) => { const q = Q[k++]; if (q < 1.15 && ctx.H[i] < lvl && lvl > ctx.WS[i]) { ctx.WS[i] = lvl; ctx.WK[i] = style === 5 ? WK_POND : WK_LAKE; } });
       ctx.meta[f.id] = { level: +lvl.toFixed(2) };
     },
   };
@@ -937,7 +1018,7 @@ function terrainCore() {
     const bb = t.bbox(f);
     return bb;
   }
-  const active = (p) => p.features.filter((f) => !f.suppressed && T[f.type] && (T[f.type].kind === "point" || (f.pts && f.pts.length >= 2)));
+  const active = (p) => p.features.filter((f) => !f.suppressed && !f.hidden && T[f.type] && (T[f.type].kind === "point" || (f.pts && f.pts.length >= 2)));
   const overl = (a, b) => a.c0 <= b.c1 && b.c0 <= a.c1 && a.r0 <= b.r1 && b.r0 <= a.r1;
   const unionR = (a, b) => !a ? b : !b ? a : { c0: Math.min(a.c0, b.c0), r0: Math.min(a.r0, b.r0), c1: Math.max(a.c1, b.c1), r1: Math.max(a.r1, b.r1) };
   // Grow the rect until every feature that reads heights under it is fully inside.
@@ -971,7 +1052,7 @@ function terrainCore() {
       for (let c = R.c0; c <= R.c1; c++) {
         const cc = c - ctx.c0, i = rr * rw + cc, x = c * m;
         const h = H[i];
-        if (ctx.WS[i] > h + 0.02) { out[k++] = ctx.WK[i] === WK_LAKE ? B_LAKE : ctx.WK[i] === WK_RIVER ? B_RIVER : B_OCEAN; continue; }
+        if (ctx.WS[i] > h + 0.02) { const wk = ctx.WK[i]; out[k++] = wk === WK_LAKE ? B_LAKE : wk === WK_RIVER ? B_RIVER : wk === WK_POND ? B_POND : wk === WK_SWAMP ? B_SWAMP : B_OCEAN; continue; }
         if (ctx.TAG[i] === TAG_PATH) { out[k++] = B_DESERT; continue; }
         const cl = Math.max(0, cc - 1), cr = Math.min(rw - 1, cc + 1);
         const gx = (H[rr * rw + cr] - H[rr * rw + cl]) / ((cr - cl) * m || 1), gy = (H[rd * rw + cc] - H[ru * rw + cc]) / ((rd - ru) * m || 1);
@@ -1115,7 +1196,7 @@ const PARAMS = {
   floor: ["Floor width", "", 0.05, 0, 0.9], steep: ["Steepness", "", 0.05, 0, 1],
   bank: ["Bank width", "m", 1, 0, 200], meander: ["Meander", "", 0.05, 0, 2], water: ["Water depth", "m", 0.1, 0.1, 10], gorge: ["Gorge", "", 0.05, 0, 1],
   smooth: ["Grade smoothing", "m", 1, 0, 400], ramp: ["Ramp (0 = follow)", "", 0.05, 0, 1],
-  style: ["Style", "", 1, 0, 3], cliffs: ["Cliff walls (massif)", "", 0.05, 0, 1], crater: ["Caldera (volcano)", "", 0.01, 0.05, 0.6], bands: ["Cliff bands", "", 1, 0, 8],
+  style: ["Style", "", 1, 0, 9], lobes: ["Lobes (outline)", "", 0.05, 0, 1.5], tilt: ["Tilt (cuesta)", "", 0.05, 0, 0.9], cliffs: ["Cliff walls (massif)", "", 0.05, 0, 1], crater: ["Caldera (volcano)", "", 0.01, 0.05, 0.6], bands: ["Cliff bands", "", 1, 0, 8],
   tiers: ["Tiers", "", 1, 1, 4], flat: ["Flat top", "", 0.05, 0, 1],
   beach: ["Beach width", "m", 1, 0, 200], beachH: ["Beach height", "m", 0.1, 0, 10], seaDepth: ["Sea depth", "m", 1, 1, 200],
 };
@@ -1318,6 +1399,7 @@ function renderDrawer() {
 function makeFeature(type, x, y) {
   const t = CORE.T[type], f = Object.assign({ id: newId(), type, name: t.label, seed: randSeed(), hidden: false, x: Math.round(x), y: Math.round(y), rot: 0, z: 0, blend: t.blend },
     JSON.parse(JSON.stringify(t.def)));
+  if (t.fresh) Object.assign(f.params, t.fresh);          // new features start organic; old projects load with the plain shape
   const n = proj.features.filter((g) => g.type === type).length;
   if (n) f.name += " " + (n + 1);
   if (t.kind === "spline") {
@@ -1343,7 +1425,7 @@ function addFeature(f) {
 //----- Waterfall Snap -----||
 // A waterfall sits where a river crosses a cliff (or the nearest river point) and faces
 // downstream.
-function snapWaterfall(f, maxD) {
+function snapWaterfall(f, maxD, crossOnly) {
   maxD = maxD || 150;
   const rivers = proj.features.filter((g) => g.type === "river" && !g.hidden && g.pts && g.pts.length > 1);
   const walls = proj.features.filter((g) => (g.type === "cliff" || g.type === "worldedge" || g.type === "plateau" || g.type === "terraces") && !g.hidden);
@@ -1360,7 +1442,7 @@ function snapWaterfall(f, maxD) {
         if (d < maxD && (!best || d < best.d)) best = { d, x: hit[0], y: hit[1], dir: Math.atan2(xy[2 * i + 3] - xy[2 * i + 1], xy[2 * i + 2] - xy[2 * i]) };
       }
     }
-    if (!best) for (let i = 0; i < m - 1; i++) {
+    if (!best && !crossOnly) for (let i = 0; i < m - 1; i++) {
       const d = Math.hypot(xy[2 * i] - f.x, xy[2 * i + 1] - f.y);
       if (d < maxD * 0.5 && (!best || d < best.d)) best = { d, x: xy[2 * i], y: xy[2 * i + 1], dir: Math.atan2(xy[2 * i + 3] - xy[2 * i + 1], xy[2 * i + 2] - xy[2 * i]), soft: true };
     }
@@ -1546,12 +1628,13 @@ function renderProps() {
     for (const k of keys) {
       const d = PARAMS[k] || [k, "", 0.05];
       if (f.type === "cliff" || f.type === "worldedge") { if (k === "side") { addSide(f, row); continue; } }
-      if (k === "style" && f.type === "mountain") {
+      const opts = SELECTS[f.type + "." + k] || SELECTS[k];
+      if (opts) {
         const st = document.createElement("select");
-        st.innerHTML = MOUNTAIN_STYLES.map((n, i) => `<option value="${i}">${n}</option>`).join("");
-        st.value = String(Math.round(f.params.style) || 0);
-        st.onchange = () => { pushUndo(); f.params.style = +st.value; changed({ keepProps: true }); };
-        row(d[0], st, "", "style"); continue;
+        st.innerHTML = opts.map((n, i) => `<option value="${i}">${n}</option>`).join("");
+        st.value = String(Math.round(f.params[k]) || 0);
+        st.onchange = () => { pushUndo(); f.params[k] = +st.value; changed({ keepProps: true }); };
+        row(d[0], st, "", ROLL[f.type] && ROLL[f.type].params[k] ? k : ""); continue;
       }
       row(d[0], num(f.params[k], d[2], (v) => { f.params[k] = d[3] !== undefined ? clamp(v, d[3], d[4]) : v; }), d[1], ROLL[f.type] && ROLL[f.type].params[k] ? k : "");
     }
@@ -1605,27 +1688,47 @@ function renderMeta() {
 // Sizes, rotation and points vary around a base: the value the user last set. A value
 // still equal to what the previous reroll produced keeps its old base (no drift);
 // typing or dragging a new value makes that the new centre of the range.
-const MOUNTAIN_STYLES = ["Peak", "Massif (flat top, cliff walls)", "Ridge", "Volcano (caldera)"];
+const MOUNTAIN_STYLES = ["Peak", "Massif (flat top, cliff walls)", "Ridge", "Volcano (caldera)", "Multi-peak", "Cirque (horseshoe)", "Spires"];
+// Params shown as a list of named archetypes ("type.param" or just "param").
+const SELECTS = {
+  "mountain.style": MOUNTAIN_STYLES,
+  "hill.style": ["Dome", "Drumlin", "Knolls", "Rolling"],
+  "terraces.style": ["Stepped hill", "Hillside (one side)", "Stepped ridge", "Amphitheater"],
+  "lake.style": ["Round", "Kidney (bay)", "Arms", "Multi-basin", "Islands", "Pond"],
+};
 const pick = (vals, w) => ({ pick: vals, w });
 const ROLL = {
-  mountain: { size: { len: [0.7, 1.35], wid: [0.7, 1.35], hgt: [0.6, 1.5] }, rot: 40, falloff: [30, 120], pos: 0.1,
-    params: { style: pick([0, 1, 2, 3], [4, 2.5, 2, 1.5]), sharp: [0.2, 1], ridges: [0.2, 1], warp: [0.2, 1.1], detail: [0.2, 0.9], cliffs: [0.3, 0.95], crater: [0.15, 0.35], bands: pick([0, 0, 0, 1, 2, 3, 4]) } },
-  hill: { size: { len: [0.7, 1.4], wid: [0.7, 1.4], hgt: [0.5, 1.8] }, rot: 60, falloff: [20, 70], pos: 0.1, params: { warp: [0.1, 1], roll: [0, 0.8] } },
-  terraces: { size: { len: [0.75, 1.3], wid: [0.75, 1.3], hgt: [0.6, 1.6] }, rot: 60, falloff: [15, 50], pos: 0.1, params: { step: [3, 10], riser: [0.15, 0.6], warp: [0.2, 1] } },
-  plateau: { size: { len: [0.75, 1.3], wid: [0.75, 1.3], hgt: [0.6, 1.5] }, rot: 60, pos: 0.1,
-    params: { side: [8, 60], ledges: pick([0, 1, 2, 3, 4]), warp: [0.2, 1.2], talus: [5, 60], tiers: pick([1, 1, 2, 2, 3]) } },
-  lake: { size: { len: [0.75, 1.35], wid: [0.75, 1.35], hgt: [0.6, 1.8] }, rot: 90, falloff: [15, 50], pos: 0.1, params: { warp: [0.1, 1.1], shore: [0.15, 0.6] } },
+  // rot 180 = any heading; archetype picks (style) change the whole character
+  mountain: { size: { len: [0.6, 1.5], wid: [0.6, 1.5], hgt: [0.5, 1.6] }, rot: 180, falloff: [30, 120], pos: 0.1,
+    params: { style: pick([0, 1, 2, 3, 4, 5, 6], [3, 2, 2, 1.5, 3, 1.5, 1.5]), lobes: [0.3, 1.3], peaks: pick([2, 3, 3, 4, 5, 6]), sharp: [0.2, 1], ridges: [0.2, 1], warp: [0.2, 1.1], detail: [0.2, 0.9], cliffs: [0.3, 0.95], crater: [0.15, 0.35], bands: pick([0, 0, 0, 1, 2, 3, 4]) } },
+  hill: { size: { len: [0.6, 1.6], wid: [0.6, 1.4], hgt: [0.5, 1.8] }, rot: 180, falloff: [20, 70], pos: 0.1, params: { style: pick([0, 1, 2, 3], [2, 1.5, 2, 1.5]), lobes: [0.3, 1.3], warp: [0.1, 1], roll: [0, 0.8] } },
+  terraces: { size: { len: [0.65, 1.45], wid: [0.65, 1.3], hgt: [0.6, 1.6] }, rot: 180, falloff: [15, 50], pos: 0.1, params: { style: pick([0, 1, 2, 3]), lobes: [0.3, 1.3], step: [3, 10], riser: [0.15, 0.6], warp: [0.2, 1] } },
+  plateau: { size: { len: [0.6, 1.45], wid: [0.6, 1.3], hgt: [0.6, 1.5] }, rot: 180, pos: 0.1,
+    params: { lobes: [0.3, 1.3], tilt: pick([0, 0, 0, 0.25, 0.45, 0.65]), side: [8, 60], ledges: pick([0, 1, 2, 3, 4]), warp: [0.2, 1.2], talus: [5, 60], tiers: pick([1, 1, 2, 2, 3]) } },
+  lake: { size: { len: [0.65, 1.5], wid: [0.65, 1.4], hgt: [0.6, 1.8] }, rot: 180, falloff: [15, 50], pos: 0.1, params: { style: pick([0, 1, 2, 3, 4, 5], [2, 1.5, 1.5, 1.5, 1.5, 1]), lobes: [0.3, 1.3], warp: [0.1, 1.1], shore: [0.15, 0.6] } },
   // the waterfall never moves or turns: it has to stay on its drop
-  waterfall: { size: { wid: [0.6, 1.6], hgt: [0.6, 2] }, params: { reach: [15, 45] } },
+  // and keeps its reach, so the measured drop stays the same
+  waterfall: { size: { wid: [0.6, 1.6], hgt: [0.7, 1.5] }, params: { pool: pick([0, 1, 1]) } },
   range: { size: { wid: [0.75, 1.3], hgt: [0.6, 1.4] }, falloff: [30, 120], path: 0.1, pts: 0.12,
     params: { peaks: pick([2, 3, 4, 5, 6, 7, 8, 9]), sharp: [0.2, 1], spurs: [0.2, 1], wiggle: [0.1, 0.9], flat: pick([0, 0, 0, 0.4, 0.6, 0.8, 1]) } },
-  cliff: { size: { wid: [0.7, 1.5], hgt: [0.6, 1.6] }, path: 0.08, pts: 0.1, params: { lean: [0, 25], rough: [0.2, 1.1], strata: pick([0, 1, 2, 3, 4, 5, 6]) } },
+  cliff: { size: { wid: [0.6, 1.7], hgt: [0.5, 1.8] }, path: 0.14, pts: 0.12, params: { lean: [0, 30], rough: [0.2, 1.3], strata: pick([0, 1, 2, 3, 4, 5, 6]) } },
   worldedge: { size: { hgt: [0.9, 1.3] }, pts: 0.04, params: { lean: [0, 10], rough: [0.3, 1.2], strata: pick([2, 3, 4, 5, 6, 7, 8, 9]) } },
   valley: { size: { wid: [0.7, 1.4], hgt: [0.6, 1.6] }, path: 0.1, pts: 0.12, params: { floor: [0.05, 0.6], steep: [0, 1], rough: [0.1, 0.8], wiggle: [0.1, 0.8] } },
   // the bed never rises downstream (the river code), so any nudge still flows downhill
   river: { size: { wid: [0.7, 1.5], hgt: [0.7, 1.6] }, path: 0.12, pts: 0.1, params: { bank: [12, 50], meander: [0.15, 1.2], water: [1, 2.4], gorge: [0, 0.8] } },
   trail: { size: { wid: [0.8, 1.4] }, falloff: [3, 12], path: 0.04, pts: 0.05, params: { smooth: [20, 90] } },
   shoreline: { size: { wid: [0.8, 1.3], hgt: [0.7, 1.5] }, pts: 0.07, params: { beach: [12, 50], beachH: [0.8, 2.5], seaDepth: [12, 35], rough: [0.2, 1] } },
+};
+// After a roll: archetype-specific sizes (only for values that are not locked).
+const ROLL_AFTER = {
+  mountain: (f, rnd) => {
+    const st = f.params.style;
+    if (st === 2 && !isLocked(f, "len")) f.len = Math.round(f.len * 1.35);                          // a ridge reads better long
+    if (st === 6 && !isLocked(f, "hgt")) f.hgt = Math.round(f.hgt * 0.8);                           // spires: lower, sharper
+    if (st === 5 && !isLocked(f, "wid")) f.wid = Math.round(Math.max(f.wid, f.len * 0.8));           // a cirque needs room for the bowl
+  },
+  lake: (f) => { if (f.params.style === 5) { if (!isLocked(f, "len")) f.len = Math.round(f.len * 0.45); if (!isLocked(f, "wid")) f.wid = Math.round(f.wid * 0.45); if (!isLocked(f, "hgt")) f.hgt = Math.round(f.hgt * 0.5 * 10) / 10; } },
+  plateau: (f, rnd) => { if (!isLocked(f, "len") && !isLocked(f, "wid") && rnd() < 0.25) { f.len = Math.round(f.len * 0.55); f.wid = Math.round(f.wid * 0.55); if (!isLocked(f, "hgt")) f.hgt = Math.round(f.hgt * 1.4); } },   // butte
 };
 function isLocked(f, k) { return k === "pos" ? !(f.locks && f.locks.pos === false) : !!(f.locks && f.locks[k]); }
 function lockBtn(f, k) {
@@ -1654,7 +1757,7 @@ function rerollFeature(f, seedOnly) {
     if (r.pick) { let tot = 0; const w = r.w || r.pick.map(() => 1); for (const x of w) tot += x; let u = rnd() * tot, i = 0; while (i < w.length - 1 && (u -= w[i]) > 0) i++; f.params[k] = r.pick[i]; }
     else f.params[k] = Math.round(lerp(r) * 100) / 100;
   }
-  if (f.type === "mountain" && f.params.style === 2 && !isLocked(f, "len")) f.len = Math.round(f.len * 1.3);     // a ridge reads better long
+  if (ROLL_AFTER[f.type]) ROLL_AFTER[f.type](f, rnd);
   if (f.type === "river") f.params.water = Math.min(f.params.water, f.hgt);
   if (!isLocked(f, "pos") && R.pos && CORE.T[f.type].kind === "point") {
     const m = Math.min(f.len, f.wid) * R.pos;
@@ -1720,7 +1823,6 @@ function curveCheck(xy, minW) {
 function newIsland(f, basePts, rnd, out) {
   const n0 = basePts.length; let cx = 0, cy = 0; for (const q of basePts) { cx += q[0]; cy += q[1]; } cx /= n0; cy /= n0;
   const A0 = polyArea(basePts), size = proj.size, TAU = Math.PI * 2;
-  const bmin = [Math.min(...basePts.map((q) => q[0])), Math.min(...basePts.map((q) => q[1]))], bmax = [Math.max(...basePts.map((q) => q[0])), Math.max(...basePts.map((q) => q[1]))];
   let tot = 0; for (const [, w] of ISLANDS) tot += w;
   let u = rnd() * tot, kind = ISLANDS[0][0]; for (const [k, w] of ISLANDS) { if ((u -= w) <= 0) { kind = k; break; } }
   const fill = A0 / Math.max(1, (size - 2 * (f.wid + 40)) ** 2);           // a base that fills the map leaves no room to grow
@@ -1729,18 +1831,23 @@ function newIsland(f, basePts, rnd, out) {
   for (let attempt = 0, calm = 1; attempt < 8; attempt++, calm *= 0.75) {
     const r = islandRadii(kind, n, rnd, calm);
     let pts = r.map((v, i) => { const th = i / n * TAU, x = Math.cos(th) * v * sx, y = Math.sin(th) * v / sx; return [x * Math.cos(rot) - y * Math.sin(rot), x * Math.sin(rot) + y * Math.cos(rot)]; });
-    // stay on the map (about as far out as the base outline reaches): tips that stick out
-    // are pressed softly against the bounds (a coast running along the edge), then the
-    // whole shape grows a little to win the area back
-    const lo = [0, 1].map((a) => clamp(Math.min(f.wid + 40, bmin[a] - 20), 40, size / 2)), hi = [0, 1].map((a) => clamp(Math.max(size - f.wid - 40, bmax[a] + 20), size / 2, size - 40));
-    const smin = (a, b, w) => -w * Math.log(Math.exp(-a / w) + Math.exp(-b / w));
-    const unit = pts, k0 = Math.sqrt(area / Math.max(1e-6, polyArea(pts))); let k = k0;
-    for (let it = 0; it < 4; it++) {
-      pts = unit.map((q) => [0, 1].map((a) => { const c = a ? cy : cx, v = c + q[a] * k; return Math.round(-smin(-smin(v, hi[a], 50), -lo[a], 50)); }));
-      const got = polyArea(pts); if (got >= area * 0.97) break;
-      if (k >= k0 * 1.15) break;
-      k = Math.min(k0 * 1.15, k * Math.sqrt(area / Math.max(1, got)));
+    // stay on the map with a margin: the whole shape is scaled down and shifted to fit (no
+    // tips pressed flat against the edge)
+    const mg = clamp(f.wid * 0.5 + 40, 100, 300), lo = mg, hi = size - mg;
+    let pts2 = pts.map((q) => q.map((v) => v * Math.sqrt(area / Math.max(1e-6, polyArea(pts)))));
+    // a long shape turns to the heading where it fits best (random among the good ones)
+    const fitOf = (P) => Math.min(1, ...[0, 1].map((a) => (hi - lo) / Math.max(1, Math.max(...P.map((q) => q[a])) - Math.min(...P.map((q) => q[a])))));
+    const turn = (P, b) => P.map(([x, y]) => [x * Math.cos(b) - y * Math.sin(b), x * Math.sin(b) + y * Math.cos(b)]);
+    if (fitOf(pts2) < 0.95) {
+      const cand = []; for (let j = 0; j < 12; j++) cand.push([j / 12 * Math.PI, fitOf(turn(pts2, j / 12 * Math.PI))]);
+      const best = Math.max(...cand.map((c) => c[1])), ok = cand.filter((c) => c[1] >= best * 0.97);
+      pts2 = turn(pts2, ok[rnd() * ok.length | 0][0]);
     }
+    const ext = [0, 1].map((a) => [Math.min(...pts2.map((q) => q[a])), Math.max(...pts2.map((q) => q[a]))]);
+    const fit = Math.min(1, ...ext.map(([a, b]) => (hi - lo) / Math.max(1, b - a)));
+    pts2 = pts2.map((q) => q.map((v) => v * fit));
+    const c0 = [cx, cy].map((c, a) => { const e0 = ext[a][0] * fit, e1 = ext[a][1] * fit; return clamp(c, lo - e0, hi - e1); });
+    pts = pts2.map((q) => [Math.round(c0[0] + q[0]), Math.round(c0[1] + q[1])]);
     const g = Object.assign({}, f, { pts }), err = curveCheck(CORE.polyOf(g).xy, Math.max(60, f.wid * 0.6));
     if (out) out.tries = attempt + 1;
     if (!err) { lastIsland = kind; if (out) out.kind = kind; return pts; }
@@ -1796,7 +1903,7 @@ function rerollSel(seedOnly) {
   pushUndo();
   rerollFeature(f, seedOnly);
   // waterfalls on a rerolled river or wall follow its new crossing
-  if (!seedOnly && f.pts) for (const w of proj.features) if (w.type === "waterfall") snapWaterfall(w, 250);
+  if (!seedOnly && f.type !== "waterfall") for (const w of proj.features) if (w.type === "waterfall" && w !== f && !isLocked(w, "pos")) snapWaterfall(w, 250, true);
   changed();
 }
 function centroid(f) {
