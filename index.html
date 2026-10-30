@@ -1053,25 +1053,29 @@ const DEMO_PROJECT = {"format":"terrain-maker-project","version":1,"name":"demo_
 // so exported files keep their meaning). game: terrain color; water biomes are drawn with
 // one water color in this editor (sea, lake and river look the same).
 const BIOMES = [
-  { name: "Ocean",  key: [ 30,  70, 255], game: [ 58,  86, 120], water: true, wcol: [ 28,  78, 190, 0.62] },
-  { name: "Lake",   key: [ 60, 160, 255], game: [ 76,  98, 110], water: true, wcol: [ 40, 115, 215, 0.70] },
-  { name: "River",  key: [  0, 230, 255], game: [ 76,  98, 110], water: true, wcol: [ 40, 115, 215, 0.70] },
-  { name: "Pond",   key: [  0, 255, 190], game: [ 74,  90,  64], water: true, wcol: [ 50, 140, 160, 0.65] },
-  { name: "Swamp",  key: [150, 170,  60], game: [ 78,  92,  52], water: true, wcol: [ 90, 110,  60, 0.45] },
-  { name: "Desert", key: [255, 225, 120], game: [226, 200, 130] },
-  { name: "Snow",   key: [185, 220, 255], game: [240, 244, 250] },
-  { name: "Plains", key: [160, 255,  40], game: [106, 190,  48] },
-  { name: "Rock",   key: [255, 255, 255], game: [128, 130, 140] },
-  { name: "Forest", key: [ 60, 255,  90], game: [ 40, 122,  52] },
+  { name: "Ocean",  key: [ 30,  70, 255], game: [ 70, 120, 118], water: true, wcol: [ 38, 150, 172, 0.62] },
+  { name: "Lake",   key: [ 60, 160, 255], game: [ 90, 118, 100], water: true, wcol: [ 50, 172, 180, 0.70] },
+  { name: "River",  key: [  0, 230, 255], game: [ 90, 118, 100], water: true, wcol: [ 50, 172, 180, 0.70] },
+  { name: "Pond",   key: [  0, 255, 190], game: [ 84, 110,  70], water: true, wcol: [ 62, 160, 140, 0.65] },
+  { name: "Swamp",  key: [150, 170,  60], game: [ 92, 104,  52], water: true, wcol: [100, 120,  60, 0.45] },
+  { name: "Desert", key: [255, 225, 120], game: [226, 196, 132] },
+  { name: "Snow",   key: [185, 220, 255], game: [240, 236, 226] },
+  { name: "Plains", key: [160, 255,  40], game: [122, 178,  52] },
+  { name: "Rock",   key: [255, 255, 255], game: [150,  96,  58] },
+  { name: "Forest", key: [ 60, 255,  90], game: [ 36, 112,  56] },
 ];
 const B_ROCK = 8, B_SWAMP = 4;
-const WATER_RGB = [40, 110, 200];             // the one water color (sea, lakes, rivers, falls)
+const WATER_RGB = [44, 152, 165];             // the one water color (sea, lakes, rivers, falls): turquoise
 const LANDMARK_TYPES = ["cliff_walkway", "rock_arch", "crashed_wreck", "stranded_platform"];
 const RIVER_DEPTH = 0.8, SWAMP_DEPTH = 0.25, MIN_LAKE_DEPTH = 0.3, VMIN = 0.3;
 const SAVE_KEY = "terrainMaker.cad.v1";
 const UNDO_MAX = 200;
 const SUN = (() => { const v = [0.3, 0.5, 0.8], l = Math.hypot(...v); return v.map((x) => x / l); })();
-const FOG_COL = [0.80, 0.85, 0.90];
+//----- Palette -----||
+// Stylized low-poly look: warm sun, cool shadows, a blue-to-cream sky, turquoise water.
+const FOG_COL = [0.84, 0.86, 0.80];           // = the sky at the horizon
+const SKY_TOP = [0.25, 0.54, 0.84], SKY_HOR = FOG_COL;
+const SUN_COL = [0.80, 0.70, 0.55], AMB_COL = [0.40, 0.45, 0.60];
 
 const CORE = terrainCore();
 const $ = (id) => document.getElementById(id);
@@ -1911,6 +1915,7 @@ uniform vec2 uRes;           // canvas px
 uniform float uMpp, uK, uN, uContour, uSea, uMode;   // uMode 1 = Outlines display mode
 uniform vec4 uUnd;           // underlay: w, h (texels), m per texel, alpha (0 = off)
 uniform vec3 uPal[${BIOMES.length}]; uniform vec3 uWater, uSun;
+const vec3 SUNC = vec3(${SUN_COL.join(", ")}), AMBC = vec3(${AMB_COL.join(", ")});
 out vec4 o;
 float hAt(ivec2 p) { return texelFetch(uH, clamp(p, ivec2(0), ivec2(int(uN) - 1)), 0).r; }
 void main() {
@@ -1941,8 +1946,7 @@ void main() {
   float dy = (hAt(p - ivec2(0, s)) - hAt(p + ivec2(0, s))) / d;
   vec3 n = normalize(vec3(-dx, -dy, 1.0));
   vec3 col = uPal[min(int(b), ${BIOMES.length - 1})];
-  float sh = 0.35 + 0.75 * max(0.0, dot(n, uSun));
-  col *= sh;
+  col *= AMBC + SUNC * max(0.0, dot(n, uSun)) * 1.1;                 // warm sun, cool shade
   if (ws > h) {
     float dep = ws - h;
     vec3 wc = mix(uWater * 1.25, uWater * 0.55, smoothstep(0.0, 18.0, dep));
@@ -2357,10 +2361,10 @@ function tileMinMax(R) {
   }
 }
 const FOG_GLSL = `
-uniform vec4 uFog;        // edge fog width m (0 = off), world size m, far m, unused
+uniform vec4 uFog;        // edge fog width m (0 = off), world size m, far m, haze length m
 uniform vec3 uFogCol, uEye;
 float fogK(vec3 p) {
-  float k = smoothstep(uFog.z * 0.45, uFog.z, distance(p, uEye));
+  float dd = distance(p, uEye), k = max(smoothstep(uFog.z * 0.45, uFog.z, dd), uFog.w > 0.0 ? 0.6 * (1.0 - exp(-dd / uFog.w)) : 0.0);   // + aerial haze
   if (uFog.x > 0.0) {
     float d = min(min(p.x, uFog.y - p.x), min(p.y, uFog.y - p.y));
     float e = 1.0 - smoothstep(0.0, uFog.x, d);
@@ -2394,6 +2398,7 @@ uniform highp usampler2D uB;
 uniform highp sampler2D uH;
 uniform int uN; uniform float uMppT;
 uniform vec3 uPal[${BIOMES.length}]; uniform vec3 uSun;
+const vec3 SUNC = vec3(${SUN_COL.join(", ")}), AMBC = vec3(${AMB_COL.join(", ")});
 ${FOG_GLSL}
 centroid in vec3 vWorld; centroid in vec2 vGrid; in float vSk; out vec4 o;
 float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -2408,13 +2413,15 @@ void main() {
     float s = texelFetch(uH, g - ivec2(0, 1), 0).r - texelFetch(uH, g + ivec2(0, 1), 0).r;
     n = normalize(vec3(-e, -s, 2.0 * uMppT));
   }
+  vec2 fc = fract(vGrid); float tri = fc.x > fc.y ? 1.0 : 0.0;                 // which triangle of the cell
+  col *= 0.94 + 0.12 * hash2(floor(vGrid) * 2.0 + tri);                       // faceted low-poly tint
   float tg = sqrt(max(0.0, 1.0 - n.z * n.z)) / max(n.z, 1e-3);
   float k = smoothstep(0.75, 1.2, tg);
   if (k > 0.0 && b > ${B_SWAMP}u) {
     vec2 tri = floor(vGrid) * 2.0;
     col = mix(col, uPal[${B_ROCK}] * (0.82 + 0.36 * hash2(tri + 5.1)), k * 0.85);
   }
-  col *= 0.5 + 0.55 * max(0.0, dot(n, uSun));
+  col *= AMBC + SUNC * 1.15 * max(0.0, dot(n, uSun));                         // warm sun, cool shade
   o = vec4(mix(col, uFogCol, fogK(vWorld)), 1.0);
 }`);
   U3 = uniforms(prog3, ["uH", "uB", "uN", "uStep", "uCells", "uMppT", "uSkirt", "uMVP", "uPal", "uSun", "uFog", "uFogCol", "uEye"]);
@@ -2431,7 +2438,7 @@ void main() {
   float dep = vWorld.z - texelFetch(uH, c, 0).r;
   vec3 v = normalize(uEye - vWorld), h = normalize(v + uSun);
   float spec = pow(max(0.0, h.z), 90.0) * 0.5;
-  vec3 col = mix(uWater * 1.3, uWater * 0.6, smoothstep(0.0, 15.0, dep)) + spec;
+  vec3 col = mix(uWater * 1.45 + vec3(0.06, 0.08, 0.02), uWater * 0.5, smoothstep(0.0, 15.0, dep)) + spec;   // turquoise shallows
   float a = mix(0.6, 0.92, smoothstep(0.0, 5.0, dep));
   o = vec4(mix(col, uFogCol, fogK(vWorld)), a * vWet);
 }`);
@@ -2497,8 +2504,10 @@ function render3D() {
   const t0 = performance.now();
   gl.viewport(0, 0, glCv.width, glCv.height);
   gl.clearColor(FOG_COL[0], FOG_COL[1], FOG_COL[2], 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  const M = camMatrices();
+  drawSky(M);
   gl.enable(gl.DEPTH_TEST); gl.enable(gl.CULL_FACE); gl.cullFace(gl.BACK); gl.frontFace(gl.CCW);
-  const M = camMatrices(), pl = frustum(M.mvp), mppT = proj.mpp * TK, span = TS * mppT, ws = (TN - 1) * mppT;
+  const pl = frustum(M.mvp), mppT = proj.mpp * TK, span = TS * mppT, ws = (TN - 1) * mppT;
   const pxK = glCv.height / (2 * Math.tan(M.fov * Math.PI / 360));
   const lists = Array.from({ length: LODS }, () => []);
   let culled = 0;
@@ -2519,7 +2528,7 @@ function render3D() {
   const all = new Int16Array(lists.reduce((s, l) => s + l.length, 0)); let off = 0; const offs = [];
   for (const l of lists) { offs.push(off); all.set(l, off); off += l.length; }
   gl.bindBuffer(gl.ARRAY_BUFFER, instBuf); gl.bufferData(gl.ARRAY_BUFFER, all, gl.STREAM_DRAW);
-  const fog = [view === "walk" && $("cFog").checked ? 140 : 0, ws, M.far, 0];
+  const fog = [view === "walk" && $("cFog").checked ? 140 : 0, ws, M.far, view === "walk" ? 900 : 2600];
   const common = (u) => {
     gl.uniform1i(u.uN, TN); gl.uniform1f(u.uMppT, mppT); gl.uniformMatrix4fv(u.uMVP, false, M.mvp);
     gl.uniform4fv(u.uFog, fog); gl.uniform3fv(u.uFogCol, FOG_COL); gl.uniform3fv(u.uEye, M.eye);
@@ -2553,6 +2562,45 @@ function render3D() {
   stats3 = { tiles: off / 2, culled, tris: Math.round(tris), cpuMs: performance.now() - t0, perLod };
   if (view === "walk") hudWalk();
   else { $("hud").style.display = "block"; $("hud").textContent = `${stats3.tiles} tiles drawn, ${culled} culled · steps ${perLod.map((n, L) => n ? (1 << L) + ":" + n : "").filter(Boolean).join(" ")} · ${fmtInt(tris / 2)} tris (plus water)\ndrag: orbit · right-drag: pan · wheel: zoom`; }
+}
+//----- Sky -----||
+// Gradient from the horizon (= fog color) to a deep blue overhead, with a warm glow around
+// the sun. A full-screen triangle; the view ray comes from the inverse camera matrix.
+let progS = null, US = null;
+function mat4Inv(m) {
+  const a = m, o = new Float32Array(16);
+  const b00 = a[0] * a[5] - a[1] * a[4], b01 = a[0] * a[6] - a[2] * a[4], b02 = a[0] * a[7] - a[3] * a[4], b03 = a[1] * a[6] - a[2] * a[5];
+  const b04 = a[1] * a[7] - a[3] * a[5], b05 = a[2] * a[7] - a[3] * a[6], b06 = a[8] * a[13] - a[9] * a[12], b07 = a[8] * a[14] - a[10] * a[12];
+  const b08 = a[8] * a[15] - a[11] * a[12], b09 = a[9] * a[14] - a[10] * a[13], b10 = a[9] * a[15] - a[11] * a[13], b11 = a[10] * a[15] - a[11] * a[14];
+  const d = 1 / (b00 * b11 - b01 * b10 + b02 * b09 + b03 * b08 - b04 * b07 + b05 * b06);
+  o[0] = (a[5] * b11 - a[6] * b10 + a[7] * b09) * d; o[1] = (a[2] * b10 - a[1] * b11 - a[3] * b09) * d; o[2] = (a[13] * b05 - a[14] * b04 + a[15] * b03) * d; o[3] = (a[10] * b04 - a[9] * b05 - a[11] * b03) * d;
+  o[4] = (a[6] * b08 - a[4] * b11 - a[7] * b07) * d; o[5] = (a[0] * b11 - a[2] * b08 + a[3] * b07) * d; o[6] = (a[14] * b02 - a[12] * b05 - a[15] * b01) * d; o[7] = (a[8] * b05 - a[10] * b02 + a[11] * b01) * d;
+  o[8] = (a[4] * b10 - a[5] * b08 + a[7] * b06) * d; o[9] = (a[1] * b08 - a[0] * b10 - a[3] * b06) * d; o[10] = (a[12] * b04 - a[13] * b02 + a[15] * b00) * d; o[11] = (a[9] * b02 - a[8] * b04 - a[11] * b00) * d;
+  o[12] = (a[5] * b07 - a[4] * b09 - a[6] * b06) * d; o[13] = (a[0] * b09 - a[1] * b07 + a[2] * b06) * d; o[14] = (a[13] * b01 - a[12] * b03 - a[14] * b00) * d; o[15] = (a[8] * b03 - a[9] * b01 + a[10] * b00) * d;
+  return o;
+}
+function drawSky(M) {
+  if (!progS) {
+    progS = makeProgram(`#version 300 es
+void main() { vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)); gl_Position = vec4(p * 2.0 - 1.0, 0.999, 1.0); }`, `#version 300 es
+precision highp float;
+uniform mat4 uInv; uniform vec2 uRes; uniform vec3 uSun, uTop, uHor;
+out vec4 o;
+void main() {
+  vec2 n = gl_FragCoord.xy / uRes * 2.0 - 1.0;
+  vec4 a = uInv * vec4(n, -1.0, 1.0), b = uInv * vec4(n, 1.0, 1.0);
+  vec3 d = normalize(b.xyz / b.w - a.xyz / a.w);
+  vec3 c = mix(uHor, uTop, pow(smoothstep(-0.02, 0.7, d.z), 0.7));
+  c += vec3(1.0, 0.8, 0.5) * 0.25 * pow(max(0.0, dot(d, uSun)), 8.0);
+  o = vec4(c, 1.0);
+}`);
+    US = uniforms(progS, ["uInv", "uRes", "uSun", "uTop", "uHor"]);
+  }
+  gl.disable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE);
+  gl.useProgram(progS);
+  gl.uniformMatrix4fv(US.uInv, false, mat4Inv(M.mvp)); gl.uniform2f(US.uRes, glCv.width, glCv.height);
+  gl.uniform3fv(US.uSun, SUN); gl.uniform3fv(US.uTop, SKY_TOP); gl.uniform3fv(US.uHor, SKY_HOR);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
 }
 // Waterfall sheets: a quad from the lip down to the pool, across the river.
 function drawFalls(M, fog) {
