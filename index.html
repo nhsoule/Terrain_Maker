@@ -1519,7 +1519,7 @@ const BIOMES = [
   { name: "Desert", key: [255, 225, 120], game: [236, 208, 154] },
   { name: "Snow",   key: [185, 220, 255], game: [246, 240, 240] },
   { name: "Plains", key: [160, 255,  40], game: [132, 196,  84] },
-  { name: "Rock",   key: [255, 255, 255], game: [170, 112,  84] },
+  { name: "Rock",   key: [255, 255, 255], game: [160, 122,  94] },
   { name: "Forest", key: [ 60, 255,  90], game: [ 52, 138,  84] },
 ];
 const B_ROCK = 8, B_SWAMP = 4;
@@ -1532,9 +1532,9 @@ const SUN = (() => { const v = [0.3, 0.5, 0.8], l = Math.hypot(...v); return v.m
 //----- Palette -----||
 // Stylized low-poly diorama look: soft pastel-saturated colors, fresh greens, warm sand,
 // turquoise water, gentle warm sun with lavender shadows, a blue-to-blush sky.
-const FOG_COL = [0.93, 0.85, 0.86];           // = the sky at the horizon (soft blush)
+const FOG_COL = [0.92, 0.87, 0.88];           // = the sky at the horizon (soft blush)
 const SKY_TOP = [0.42, 0.62, 0.88], SKY_HOR = FOG_COL;
-const SUN_COL = [0.86, 0.75, 0.62], AMB_COL = [0.50, 0.44, 0.66];
+const SUN_COL = [0.86, 0.75, 0.62], AMB_COL = [0.50, 0.47, 0.64];
 
 const CORE = terrainCore();
 const $ = (id) => document.getElementById(id);
@@ -3031,6 +3031,7 @@ void main() {
   fallBuf = gl.createBuffer(); vaoF = gl.createVertexArray(); gl.bindVertexArray(vaoF);
   gl.bindBuffer(gl.ARRAY_BUFFER, fallBuf); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, 0);
   gl.bindVertexArray(null);
+  initLandmarks();
 }
 
 //----- 3D Camera -----||
